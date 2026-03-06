@@ -36,7 +36,7 @@ CONFIG = {
     "play_threshold": 500000,
     "top_n": 5,
     "salesforce_base_url": "https://snowforce.lightning.force.com/",
-    # Hardcoded timeline values (heuristic averages, not calendar-dependent)
+    # Hardcoded timeline defaults (overridden by q_use_case_velocity when available)
     "days_to_tw": 42,
     "days_to_imp": 25,
     "days_to_deploy": 79,
@@ -157,7 +157,7 @@ def truncate_text(text, max_len=500):
 #   2026-02-19, 02/19/26, 2/19/26, 12/8/25, 2026-01-12, etc.
 # Also: "2/23/2026 -", "10/7/25 -", "**20250619", "[2026-02-06"
 _DATE_LINE_RE = re.compile(
-    r'^\s*(?:'
+    r'^\s*(?:[A-Z]{1,4}[\s:\-]*)?(?:'
     r'\[?\*{0,2}\d{4}[-/]\d{2}[-/]\d{2}'   # 2026-02-19, **20250619
     r'|\[?\d{1,2}[-/]\d{1,2}[-/]\d{2,4}'    # 2/19/26, 12/8/25, 02/19/26
     r'|\d{4}\d{4}\s'                          # 20250827 NM
@@ -187,6 +187,33 @@ def extract_latest_comment(text):
     # The second match is the start of the next (older) comment.
     latest = s[matches[0].start():matches[1].start()].strip()
     return latest
+
+
+def update_risk_thresholds_from_velocity(velocity):
+    """Update CONFIG risk_thresholds and days_to_* from velocity averages.
+
+    Threshold logic:
+      - Stage 1-3: need TW + imp start + deploy time
+      - Stage 4:   need imp start + deploy time
+      - Stage 5:   need deploy time only
+    Falls back to existing CONFIG defaults when a velocity value is None.
+    """
+    tw = velocity["current"].get("time_to_tw")
+    imp = velocity["current"].get("won_to_imp_start")
+    dep = velocity["current"].get("won_to_deployed")
+
+    tw = int(round(tw)) if tw is not None else CONFIG["days_to_tw"]
+    imp = int(round(imp)) if imp is not None else CONFIG["days_to_imp"]
+    dep = int(round(dep)) if dep is not None else CONFIG["days_to_deploy"]
+
+    CONFIG["days_to_tw"] = tw
+    CONFIG["days_to_imp"] = imp
+    CONFIG["days_to_deploy"] = dep
+    CONFIG["risk_thresholds"] = {
+        "stage_123": tw + imp + dep,
+        "stage_4": imp + dep,
+        "stage_5": dep,
+    }
 
 
 # =============================================================================
@@ -817,13 +844,14 @@ def q_partner_sd_attach(conn):
 
 
 def q_use_case_velocity(conn):
-    """Query: Use case velocity medians for CQ go-lives + prior quarter."""
+    """Query: Use case velocity averages for CQ go-lives + prior quarter."""
     def _query_velocity(start, end, label):
         rows = run_query(conn, f"""
             SELECT
-                MEDIAN(d.TIME_TO_TECH_WIN) as MEDIAN_TW,
-                MEDIAN(DATEDIFF('day', d.ACTUAL_USE_CASE_WON_DATE, d.IMPLEMENTATION_START_DATE)) as MEDIAN_WON_TO_IMP,
-                MEDIAN(d.TIME_WON_TO_DEPLOYED) as MEDIAN_WON_TO_DEPLOYED
+                AVG(d.TIME_TO_TECH_WIN) as AVG_TW,
+                AVG(CASE WHEN DATEDIFF('day', d.ACTUAL_USE_CASE_WON_DATE, d.IMPLEMENTATION_START_DATE) >= 0
+                     THEN DATEDIFF('day', d.ACTUAL_USE_CASE_WON_DATE, d.IMPLEMENTATION_START_DATE) END) as AVG_WON_TO_IMP,
+                AVG(d.TIME_WON_TO_DEPLOYED) as AVG_WON_TO_DEPLOYED
             FROM {CONFIG["raven_uc_table"]} u
             JOIN {CONFIG["raven_acct_table"]} a ON u.VH_ACCOUNT_C = a.SALESFORCE_ACCOUNT_ID
             JOIN {CONFIG["dim_uc_table"]} d ON u.ID = d.USE_CASE_ID
@@ -832,12 +860,12 @@ def q_use_case_velocity(conn):
               AND u.IS_WENT_LIVE = TRUE
               AND u.DEFAULT_DATE BETWEEN '{start}' AND '{end}'
         """, f"Query: Use Case Velocity ({label})")
-        if rows and rows[0]["MEDIAN_TW"] is not None:
+        if rows and rows[0]["AVG_TW"] is not None:
             r = rows[0]
             return {
-                "time_to_tw": float(r["MEDIAN_TW"]) if r["MEDIAN_TW"] is not None else None,
-                "won_to_imp_start": float(r["MEDIAN_WON_TO_IMP"]) if r["MEDIAN_WON_TO_IMP"] is not None else None,
-                "won_to_deployed": float(r["MEDIAN_WON_TO_DEPLOYED"]) if r["MEDIAN_WON_TO_DEPLOYED"] is not None else None,
+                "time_to_tw": float(r["AVG_TW"]) if r["AVG_TW"] is not None else None,
+                "won_to_imp_start": float(r["AVG_WON_TO_IMP"]) if r["AVG_WON_TO_IMP"] is not None else None,
+                "won_to_deployed": float(r["AVG_WON_TO_DEPLOYED"]) if r["AVG_WON_TO_DEPLOYED"] is not None else None,
             }
         return {"time_to_tw": None, "won_to_imp_start": None, "won_to_deployed": None}
 
@@ -3105,10 +3133,16 @@ def build_html(data):
     sql_rows = "\n".join(build_use_case_row(uc, consumption, row_type="standard") for uc in play_use_cases["sqlserver"])
 
     # Pacing
-    day_avg = fmt_currency(pacing["day_avg"])
-    day_pct = fmt_pct(pacing["day_pct"])
-    week_avg = fmt_currency(pacing["week_avg"])
-    week_pct = fmt_pct(pacing["week_pct"])
+    day_number = int(fiscal["DAY_NUMBER"])
+    week_number = int(fiscal["WEEK_NUMBER"])
+    day_avg = pacing["day_avg"]
+    day_pct_val = pacing["day_pct"]
+    week_avg = pacing["week_avg"]
+    week_pct_val = pacing["week_pct"]
+
+    # Projections: if prior FY was X% deployed by day/week N, project current final
+    day_projection = (deployed["acv"] / (day_pct_val / 100)) if day_pct_val > 0 else None
+    week_projection = (deployed["acv"] / (week_pct_val / 100)) if week_pct_val > 0 else None
 
     # Play deployed targets
     def fmt_play_target(play_key):
@@ -3294,13 +3328,20 @@ def build_html(data):
 We have deployed <strong>{fmt_currency(deployed["acv"])}</strong> QTD against a target of <strong>{fmt_currency(gl_target)}</strong> (<strong>{fmt_pct(deployed_pct_of_target)}</strong> of target).
 Our open pipeline is <strong>{fmt_currency(pipeline["acv"])}</strong>, giving us <strong>{fmt_pct(coverage_pct)}</strong> ML coverage (deployed + open pipeline vs Most Likely).</p>
 
-<h3 style="color: #333; border-bottom: 2px solid #007bff; padding-bottom: 8px;">Risk and Pacing</h3>
+<h3 style="color: #333; border-bottom: 2px solid #007bff; padding-bottom: 8px;">Risk</h3>
 <p>Total pipeline risk stands at <strong>{fmt_currency(total_risk_acv)}</strong>, leaving
 <strong>{fmt_currency(total_good)}</strong> in good pipeline for <strong>{fmt_pct(good_coverage)}</strong> good coverage vs Most Likely.
-We are currently at <strong>{fmt_pct(deployed_pct_of_target)}</strong> of our go-live target.
-On a day-over-day basis, we are pacing at <strong>{day_avg}</strong> ({day_pct} of prior FY average),
-and on a week-over-week basis at <strong>{week_avg}</strong> ({week_pct} of prior FY average).</p>
+We are currently at <strong>{fmt_pct(deployed_pct_of_target)}</strong> of our go-live target.</p>
 {high_risk_table_html}
+
+<h3 style="color: #333; border-bottom: 2px solid #007bff; padding-bottom: 8px;">Pacing</h3>
+<p>On Day <strong>{day_number}</strong> of the quarter, our current deployed ACV of <strong>{fmt_currency(deployed["acv"])}</strong>
+compares to a prior FY average of <strong>{fmt_currency(day_avg)}</strong> deployed by this day
+(<strong>{fmt_pct(day_pct_val)}</strong> of the prior FY average final of <strong>{fmt_currency(CONFIG["prior_fy_avg_final"] * 1e6)}</strong>).
+On a weekly basis (Week <strong>{week_number}</strong>), the prior FY average deployed was <strong>{fmt_currency(week_avg)}</strong>
+(<strong>{fmt_pct(week_pct_val)}</strong> of final).</p>
+<p>If the current quarter follows the same deployment curve as the prior FY average,
+our projected quarter-end deployed ACV would be{f" <strong>{fmt_currency(day_projection)}</strong> based on daily pacing" if day_projection else " unavailable (no prior FY daily data)"}{f" and <strong>{fmt_currency(week_projection)}</strong> based on weekly pacing" if week_projection else ""}.</p>
 
 <h3 style="color: #333; border-bottom: 2px solid #007bff; padding-bottom: 8px;">Partner and SD Attach</h3>
 <p>Partner attach rate on the open pipeline is <strong>{fmt_pct(p_rate)}</strong>
@@ -3310,7 +3351,7 @@ SD attach rate is <strong>{fmt_pct(sd_rate)}</strong>
 The remaining <strong>{unassisted_cnt}</strong> use cases ({fmt_currency(unassisted_acv)} ACV, {fmt_pct(unassisted_rate)}) are unassisted (Customer Only, Unknown, or None).</p>
 
 <h3 style="color: #333; border-bottom: 2px solid #007bff; padding-bottom: 8px;">Use Case Velocity</h3>
-<p>For use cases that went live this quarter, our median velocity metrics are:</p>
+<p>For use cases that went live this quarter, our average velocity metrics are:</p>
 <div class="timeline-box">
   <div class="timeline-item"><span class="timeline-label">Days to TW</span><span class="timeline-days">{v_tw_str}{v_tw_prior}</span></div>
   <div class="timeline-arrow">&rarr;</div>
@@ -3582,16 +3623,16 @@ Regional coverage: <strong>{play_detail["sqlserver"]["regions"]}</strong> of 8 A
   </tr>
   <tr>
     <td style="white-space: nowrap;"><strong>Day {day_number}</strong></td>
-    <td>{day_avg}</td>
-    <td>{day_pct}</td>
+    <td>{fmt_currency(day_avg)}</td>
+    <td>{fmt_pct(day_pct_val)}</td>
     <td>{fmt_currency(deployed["acv"])}</td>
     <td>{fmt_pct(deployed_pct)}</td>
     <td>{fmt_pct(deployed_pct_of_target)}</td>
   </tr>
   <tr>
     <td style="white-space: nowrap;"><strong>Week {week_number}</strong></td>
-    <td>{week_avg}</td>
-    <td>{week_pct}</td>
+    <td>{fmt_currency(week_avg)}</td>
+    <td>{fmt_pct(week_pct_val)}</td>
     <td>{fmt_currency(deployed["acv"])}</td>
     <td>{fmt_pct(deployed_pct)}</td>
     <td>{fmt_pct(deployed_pct_of_target)}</td>
@@ -3769,6 +3810,8 @@ def main():
 
     try:
         fiscal = q_fiscal_calendar(conn)
+        uc_velocity = q_use_case_velocity(conn)
+        update_risk_thresholds_from_velocity(uc_velocity)
         revenue = q_qtd_revenue(conn)
         forecasts = q_forecast_calls(conn)
         deployed = q_deployed_qtd(conn)
@@ -3794,7 +3837,6 @@ def main():
         wins_play_use_cases = q_wins_play_use_cases(conn)
         play_targets = q_play_targets(conn)
         partner_sd = q_partner_sd_attach(conn)
-        uc_velocity = q_use_case_velocity(conn)
         bronze_created = q_bronze_created_qtd(conn)
 
         # Set day_number in CONFIG for velocity query

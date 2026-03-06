@@ -32,6 +32,7 @@ from peak_report import (
     q_backtest_models, compute_forecast_analysis, compute_weighted_ensemble,
     q_deployment_velocity, q_risk_adjusted_pipeline_detail,
     build_risk_narrative, build_use_case_row,
+    update_risk_thresholds_from_velocity,
     _build_forecast_tab,
 )
 
@@ -50,6 +51,7 @@ st.set_page_config(
 # ---------------------------------------------------------------------------
 STREAMLIT_CSS = """
 <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; color: #333; }
     .forecast-table { border-collapse: collapse; margin: 10px 0; }
     .forecast-table th, .forecast-table td { padding: 10px 16px; text-align: left; border: 1px solid #ddd; }
     .forecast-table th { background: #29B5E8; color: white; }
@@ -177,6 +179,11 @@ def _run_all_queries(gvp_name):
     fiscal = q_fiscal_calendar(conn)
     CONFIG["day_number"] = int(fiscal["DAY_NUMBER"])
 
+    # --- Phase 1.5: Velocity (must run before risk queries to set thresholds) ---
+    _tick("Phase 1.5: Use case velocity...")
+    uc_velocity = q_use_case_velocity(conn)
+    update_risk_thresholds_from_velocity(uc_velocity)
+
     # --- Phase 2: Run independent queries concurrently ---
     _tick("Phase 2: Running queries in parallel...")
 
@@ -203,7 +210,6 @@ def _run_all_queries(gvp_name):
         ("high_risk_ucs", q_high_risk_use_cases),
         ("play_targets", q_play_targets),
         ("partner_sd", q_partner_sd_attach),
-        ("uc_velocity", q_use_case_velocity),
         ("bronze_created", q_bronze_created_qtd),
         ("si_theater", q_si_theater_totals),
         ("bronze_tb_acct", q_bronze_tb_by_account),
@@ -225,7 +231,7 @@ def _run_all_queries(gvp_name):
         "play_detail": "Play detail", "bronze_tb_total": "Bronze TB",
         "play_use_cases": "Play use cases", "play_risk": "Play risk detail",
         "high_risk_ucs": "High risk UCs (Cortex AI)", "play_targets": "Play targets",
-        "partner_sd": "Partner/SD attach", "uc_velocity": "UC velocity",
+        "partner_sd": "Partner/SD attach",
         "bronze_created": "Bronze created", "si_theater": "SI theater totals",
         "bronze_tb_acct": "Bronze TB by acct", "velocity": "Deployment velocity",
         "pipeline_detail": "Risk-adj pipeline", "pipeline_phases": "Pipeline phases",
@@ -322,7 +328,7 @@ def _run_all_queries(gvp_name):
         "forecast_analysis": forecast_analysis,
         "play_targets": results["play_targets"],
         "partner_sd": results["partner_sd"],
-        "uc_velocity": results["uc_velocity"],
+        "uc_velocity": uc_velocity,
         "bronze_created": results["bronze_created"],
         # Snapshot of CONFIG values at query time (restored on cache hit for
         # functions like _build_forecast_tab that read CONFIG directly)
@@ -526,10 +532,14 @@ def render_script_tab(data, selected_play_key):
     # Pacing
     day_number = int(fiscal["DAY_NUMBER"])
     week_number = int(fiscal["WEEK_NUMBER"])
-    day_avg = fmt_currency(pacing["day_avg"])
-    day_pct = fmt_pct(pacing["day_pct"])
-    week_avg = fmt_currency(pacing["week_avg"])
-    week_pct = fmt_pct(pacing["week_pct"])
+    day_avg = pacing["day_avg"]
+    day_pct_val = pacing["day_pct"]
+    week_avg = pacing["week_avg"]
+    week_pct_val = pacing["week_pct"]
+
+    # Projections: if prior FY was X% deployed by day/week N, project current final
+    day_projection = (deployed["acv"] / (day_pct_val / 100)) if day_pct_val > 0 else None
+    week_projection = (deployed["acv"] / (week_pct_val / 100)) if week_pct_val > 0 else None
 
     # Partner/SD attach
     p_rate = partner_sd.get("partner_rate", 0)
@@ -574,13 +584,20 @@ def render_script_tab(data, selected_play_key):
 We have deployed <strong>{fmt_currency(deployed["acv"])}</strong> QTD against a target of <strong>{fmt_currency(gl_target)}</strong> (<strong>{fmt_pct(deployed_pct_of_target)}</strong> of target).
 Our open pipeline is <strong>{fmt_currency(pipeline["acv"])}</strong>, giving us <strong>{fmt_pct(coverage_pct)}</strong> ML coverage (deployed + open pipeline vs Most Likely).</p>
 
-<h3 style="color: #333; border-bottom: 2px solid #007bff; padding-bottom: 8px;">Risk and Pacing</h3>
+<h3 style="color: #333; border-bottom: 2px solid #007bff; padding-bottom: 8px;">Risk</h3>
 <p>Total pipeline risk stands at <strong>{fmt_currency(total_risk_acv)}</strong>, leaving
 <strong>{fmt_currency(total_good)}</strong> in good pipeline for <strong>{fmt_pct(good_coverage)}</strong> good coverage vs Most Likely.
-We are currently at <strong>{fmt_pct(deployed_pct_of_target)}</strong> of our go-live target.
-On a day-over-day basis, we are pacing at <strong>{day_avg}</strong> ({day_pct} of prior FY average),
-and on a week-over-week basis at <strong>{week_avg}</strong> ({week_pct} of prior FY average).</p>
+We are currently at <strong>{fmt_pct(deployed_pct_of_target)}</strong> of our go-live target.</p>
 {high_risk_table_html}
+
+<h3 style="color: #333; border-bottom: 2px solid #007bff; padding-bottom: 8px;">Pacing</h3>
+<p>On Day <strong>{day_number}</strong> of the quarter, our current deployed ACV of <strong>{fmt_currency(deployed["acv"])}</strong>
+compares to a prior FY average of <strong>{fmt_currency(day_avg)}</strong> deployed by this day
+(<strong>{fmt_pct(day_pct_val)}</strong> of the prior FY average final of <strong>{fmt_currency(CONFIG["prior_fy_avg_final"] * 1e6)}</strong>).
+On a weekly basis (Week <strong>{week_number}</strong>), the prior FY average deployed was <strong>{fmt_currency(week_avg)}</strong>
+(<strong>{fmt_pct(week_pct_val)}</strong> of final).</p>
+<p>If the current quarter follows the same deployment curve as the prior FY average,
+our projected quarter-end deployed ACV would be{f" <strong>{fmt_currency(day_projection)}</strong> based on daily pacing" if day_projection else " unavailable (no prior FY daily data)"}{f" and <strong>{fmt_currency(week_projection)}</strong> based on weekly pacing" if week_projection else ""}.</p>
 
 <h3 style="color: #333; border-bottom: 2px solid #007bff; padding-bottom: 8px;">Partner and SD Attach</h3>
 <p>Partner attach rate on the open pipeline is <strong>{fmt_pct(p_rate)}</strong>
@@ -590,7 +607,7 @@ SD attach rate is <strong>{fmt_pct(sd_rate)}</strong>
 The remaining <strong>{unassisted_cnt}</strong> use cases ({fmt_currency(unassisted_acv)} ACV, {fmt_pct(unassisted_rate)}) are unassisted (Customer Only, Unknown, or None).</p>
 
 <h3 style="color: #333; border-bottom: 2px solid #007bff; padding-bottom: 8px;">Use Case Velocity</h3>
-<p>For use cases that went live this quarter, our median velocity metrics are:</p>
+<p>For use cases that went live this quarter, our average velocity metrics are:</p>
 <div class="timeline-box">
   <div class="timeline-item"><span class="timeline-label">Days to TW</span><span class="timeline-days">{v_tw_str}{v_tw_prior}</span></div>
   <div class="timeline-arrow">&rarr;</div>
@@ -672,7 +689,7 @@ Regional coverage: <strong>{play_detail["sqlserver"]["regions"]}</strong> of 8 A
 
     script_html += "\n</div>"  # close the script body div
 
-    st.markdown(script_html, unsafe_allow_html=True)
+    st.html(STREAMLIT_CSS + script_html)
 
 
 # ===========================================================================
@@ -963,8 +980,7 @@ def render_golives_tab(data):
 </div>
 """
 
-    st.markdown(html, unsafe_allow_html=True)
-
+    st.html(STREAMLIT_CSS + html)
 
 # ===========================================================================
 # TAB 3: FORECAST ANALYSIS
@@ -982,16 +998,13 @@ def render_forecast_tab(data):
     forecast_html = _build_forecast_tab(
         forecast_analysis, forecasts, deployed, day_number, week_number
     )
-    st.markdown(forecast_html, unsafe_allow_html=True)
+    st.html(STREAMLIT_CSS + forecast_html)
 
 
 # ===========================================================================
 # MAIN APP
 # ===========================================================================
 def main():
-    # Inject CSS
-    st.markdown(STREAMLIT_CSS, unsafe_allow_html=True)
-
     # --- Sidebar ---
     with st.sidebar:
         st.title("PEAK QC Report")
@@ -1047,7 +1060,7 @@ def main():
     qend = safe_str(fiscal["FQ_END"])
     days_remaining = int(fiscal["DAYS_REMAINING"])
 
-    st.markdown(f"## AMSExpansion PEAK Report — {selected_gvp}")
+    st.markdown(f"## PEAK Forecasting — {selected_gvp}")
     st.markdown(f"**{quarter}** ({qstart} - {qend}) | **{days_remaining} days remaining**")
 
     # --- Tabs ---
