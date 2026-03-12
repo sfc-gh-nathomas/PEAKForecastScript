@@ -240,14 +240,12 @@ def extract_latest_comment(text):
 
 
 def update_risk_thresholds_from_velocity(velocity):
-    tw = velocity["current"].get("time_to_tw")
-    imp = velocity["current"].get("won_to_imp_start")
-    dep = velocity["current"].get("won_to_deployed")
-    # Fall back to prior quarter, then CONFIG defaults
-    prior = velocity.get("prior", {})
-    tw = int(round(tw)) if tw is not None and not _is_nan(tw) else (int(round(prior.get("time_to_tw"))) if prior.get("time_to_tw") is not None and not _is_nan(prior.get("time_to_tw")) else CONFIG["days_to_tw"])
-    imp = int(round(imp)) if imp is not None and not _is_nan(imp) else (int(round(prior.get("won_to_imp_start"))) if prior.get("won_to_imp_start") is not None and not _is_nan(prior.get("won_to_imp_start")) else CONFIG["days_to_imp"])
-    dep = int(round(dep)) if dep is not None and not _is_nan(dep) else (int(round(prior.get("won_to_deployed"))) if prior.get("won_to_deployed") is not None and not _is_nan(prior.get("won_to_deployed")) else CONFIG["days_to_deploy"])
+    tw = velocity.get("time_to_tw")
+    imp = velocity.get("tw_to_imp_start")
+    dep = velocity.get("imp_to_deployed")
+    tw = int(round(tw)) if tw is not None and not _is_nan(tw) else CONFIG["days_to_tw"]
+    imp = int(round(imp)) if imp is not None and not _is_nan(imp) else CONFIG["days_to_imp"]
+    dep = int(round(dep)) if dep is not None and not _is_nan(dep) else CONFIG["days_to_deploy"]
     CONFIG["days_to_tw"] = tw
     CONFIG["days_to_imp"] = imp
     CONFIG["days_to_deploy"] = dep
@@ -1091,26 +1089,20 @@ def q_pipeline_movements():
 
 def q_use_case_velocity():
     """Stage transition velocity from pre-computed MDM cache.
-    Returns avg time-to-tech-win, won-to-imp, imp-to-deployed for current and prior quarter."""
-    def _parse(r):
-        if r:
-            return {
-                "time_to_tw": safe_float(r.get("AVG_TW")) if r.get("AVG_TW") is not None else None,
-                "won_to_imp_start": safe_float(r.get("AVG_WON_TO_IMP")) if r.get("AVG_WON_TO_IMP") is not None else None,
-                "won_to_deployed": safe_float(r.get("AVG_IMP_TO_DEPLOYED")) if r.get("AVG_IMP_TO_DEPLOYED") is not None else None,
-            }
-        return {"time_to_tw": None, "won_to_imp_start": None, "won_to_deployed": None}
-
+    Self-calculated DATEDIFFs for UCs created >= 2025-02-01, all stages.
+    Returns avg created-to-TW, TW-to-imp-start, imp-start-to-deployed."""
     gvp = CONFIG["gvp_name"]
     rows = run_query(f"""
-        SELECT PERIOD, AVG_TW, AVG_WON_TO_IMP, AVG_IMP_TO_DEPLOYED
+        SELECT AVG_TW, AVG_TW_TO_IMP, AVG_IMP_TO_DEPLOYED
         FROM SNOWPUBLIC.STREAMLIT.VELOCITY_CACHE
         WHERE ACCOUNT_GVP = '{gvp}' AND METRIC_TYPE = 'stage_transition'
     """)
-    row_map = {r["PERIOD"]: r for r in rows}
-    current = _parse(row_map.get("current"))
-    prior = _parse(row_map.get("prior"))
-    return {"current": current, "prior": prior}
+    r = rows[0] if rows else {}
+    return {
+        "time_to_tw": safe_float(r.get("AVG_TW")) if r.get("AVG_TW") is not None else None,
+        "tw_to_imp_start": safe_float(r.get("AVG_TW_TO_IMP")) if r.get("AVG_TW_TO_IMP") is not None else None,
+        "imp_to_deployed": safe_float(r.get("AVG_IMP_TO_DEPLOYED")) if r.get("AVG_IMP_TO_DEPLOYED") is not None else None,
+    }
 
 
 def q_bronze_created_qtd():
@@ -2536,24 +2528,13 @@ def render_script_tab(data, selected_play_key):
     partner_ps_total = partner_sd.get("partner_or_ps_accounts", 0)
     partner_ps_cc = partner_sd.get("partner_or_ps_cc_count", 0)
     partner_ps_cc_pct = round(partner_ps_cc / partner_ps_total * 100, 1) if partner_ps_total else 0
-    uc_vel_cur = uc_velocity.get("current", {})
-    uc_vel_prior = uc_velocity.get("prior", {})
-    v_tw = uc_vel_cur.get("time_to_tw")
-    v_imp = uc_vel_cur.get("won_to_imp_start")
-    v_dep = uc_vel_cur.get("won_to_deployed")
+    uc_vel = uc_velocity
+    v_tw = uc_vel.get("time_to_tw")
+    v_imp = uc_vel.get("tw_to_imp_start")
+    v_dep = uc_vel.get("imp_to_deployed")
     v_tw_str = f"{v_tw:.0f}" if v_tw is not None and not _is_nan(v_tw) else "N/A"
     v_imp_str = f"{v_imp:.0f}" if v_imp is not None and not _is_nan(v_imp) else "N/A"
     v_dep_str = f"{v_dep:.0f}" if v_dep is not None and not _is_nan(v_dep) else "N/A"
-    pq_label = cfg.get("prior_fy_label", "Prior") + " Q4"
-
-    def _vel_prior_sub(cur, prior_val):
-        if prior_val is None or _is_nan(prior_val):
-            return ""
-        return f'<span style="display: block; font-size: 0.45em; color: #888; margin-top: 4px;">{pq_label}: {prior_val:.0f}</span>'
-
-    v_tw_prior = _vel_prior_sub(v_tw, uc_vel_prior.get("time_to_tw"))
-    v_imp_prior = _vel_prior_sub(v_imp, uc_vel_prior.get("won_to_imp_start"))
-    v_dep_prior = _vel_prior_sub(v_dep, uc_vel_prior.get("won_to_deployed"))
     high_risk_table_html = build_high_risk_table_html(high_risk_ucs)
 
     # Pipeline movement variables (7-day)
@@ -2662,13 +2643,13 @@ SD attach rate is <strong>{fmt_pct(sd_rate)}</strong>
 The remaining <strong>{unassisted_cnt}</strong> use cases ({fmt_currency(unassisted_acv)} ACV, {fmt_pct(unassisted_rate)}) are unassisted (Customer Only, Unknown, or None).
 Of the <strong>{partner_ps_total}</strong> accounts with Partner or PS-attached use cases, <strong>{partner_ps_cc}</strong> (<strong>{partner_ps_cc_pct}%</strong>) are actively using Cortex Code CLI.</p>
 <h3 style="color: #333; border-bottom: 2px solid #007bff; padding-bottom: 8px;">Use Case Velocity</h3>
-<p>For use cases that went live this quarter, our average velocity metrics are:</p>
+<p>Average stage transition times for use cases created since FY26 Q1 (all stages):</p>
 <div class="timeline-box">
-  <div class="timeline-item"><span class="timeline-label">Days to TW</span><span class="timeline-days">{v_tw_str}{v_tw_prior}</span></div>
+  <div class="timeline-item"><span class="timeline-label">Created to TW</span><span class="timeline-days">{v_tw_str}</span></div>
   <div class="timeline-arrow">&rarr;</div>
-  <div class="timeline-item"><span class="timeline-label">Days to Imp Start</span><span class="timeline-days">{v_imp_str}{v_imp_prior}</span></div>
+  <div class="timeline-item"><span class="timeline-label">TW to Imp Start</span><span class="timeline-days">{v_imp_str}</span></div>
   <div class="timeline-arrow">&rarr;</div>
-  <div class="timeline-item"><span class="timeline-label">Days to Deployed</span><span class="timeline-days">{v_dep_str}{v_dep_prior}</span></div>
+  <div class="timeline-item"><span class="timeline-label">Imp Start to Deployed</span><span class="timeline-days">{v_dep_str}</span></div>
 </div>
 </div>"""
     st.html(STREAMLIT_CSS + script_html)
