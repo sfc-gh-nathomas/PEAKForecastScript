@@ -2289,7 +2289,7 @@ def _run_all_queries(gvp_name):
     p1_results = {}
     p1_errors = {}
 
-    with ThreadPoolExecutor(max_workers=8) as executor:
+    with ThreadPoolExecutor(max_workers=26) as executor:
         futures = {executor.submit(fn): name for name, fn in all_phase1.items()}
         for future in as_completed(futures):
             name = futures[future]
