@@ -446,60 +446,29 @@ def q_last7_deployed():
 
 
 def q_deployment_velocity():
-    snapshot_table = "SALES.REPORTING.DIM_USE_CASE_HISTORY_DS"
-    quarters = CONFIG["prior_fy_quarters"]
-    cur = run_query(f"""
-        SELECT
-            SUM(CASE WHEN u.DEFAULT_DATE >= DATEADD('day', -7, CURRENT_DATE()) THEN u.USE_CASE_ACV ELSE 0 END) as V7,
-            SUM(CASE WHEN u.DEFAULT_DATE >= DATEADD('day', -14, CURRENT_DATE()) THEN u.USE_CASE_ACV ELSE 0 END) as V14,
-            SUM(CASE WHEN u.DEFAULT_DATE >= DATEADD('day', -30, CURRENT_DATE()) THEN u.USE_CASE_ACV ELSE 0 END) as V30
-        FROM {CONFIG["raven_uc_table"]} u
-        JOIN {CONFIG["raven_acct_table"]} a ON u.VH_ACCOUNT_C = a.SALESFORCE_ACCOUNT_ID
-        WHERE a.GVP = '{CONFIG["gvp_name"]}'
-          AND u.USE_CASE_ACV > 0
-          AND u.IS_WENT_LIVE = TRUE
-          AND u.DEFAULT_DATE BETWEEN '{CONFIG["quarter_start"]}' AND '{CONFIG["quarter_end"]}'
+    gvp = CONFIG["gvp_name"]
+    rows = run_query(f"""
+        SELECT PERIOD, V7, V14, V30
+        FROM SNOWPUBLIC.STREAMLIT.VELOCITY_CACHE
+        WHERE ACCOUNT_GVP = '{gvp}' AND METRIC_TYPE = 'deployment'
+        ORDER BY PERIOD
     """)
-    current = cur[0] if cur else {}
-    day_num = int(CONFIG.get("day_number", 31))
+    current = {"v7": 0, "v14": 0, "v30": 0}
     hist_velocities = []
-    for i, (qs, qe) in enumerate(quarters):
-        q_label = f"{CONFIG['prior_fy_label']} Q{i+1}"
-        snap_date = f"DATEADD('day', {day_num - 1}, '{qs}')::DATE"
-        snap7 = f"DATEADD('day', {day_num - 8}, '{qs}')::DATE"
-        snap14 = f"DATEADD('day', {day_num - 15}, '{qs}')::DATE"
-        snap30 = f"DATEADD('day', {day_num - 31}, '{qs}')::DATE"
-        hist_rows = run_query(f"""
-            SELECT
-                '{q_label}' as QTR,
-                SUM(CASE WHEN h.ACTUAL_USE_CASE_DEPLOYMENT_DATE > {snap7}
-                         AND h.ACTUAL_USE_CASE_DEPLOYMENT_DATE <= {snap_date}
-                         AND h.IS_DEPLOYED = TRUE
-                    THEN h.USE_CASE_EACV ELSE 0 END) as V7,
-                SUM(CASE WHEN h.ACTUAL_USE_CASE_DEPLOYMENT_DATE > {snap14}
-                         AND h.ACTUAL_USE_CASE_DEPLOYMENT_DATE <= {snap_date}
-                         AND h.IS_DEPLOYED = TRUE
-                    THEN h.USE_CASE_EACV ELSE 0 END) as V14,
-                SUM(CASE WHEN h.ACTUAL_USE_CASE_DEPLOYMENT_DATE > {snap30}
-                         AND h.ACTUAL_USE_CASE_DEPLOYMENT_DATE <= {snap_date}
-                         AND h.IS_DEPLOYED = TRUE
-                    THEN h.USE_CASE_EACV ELSE 0 END) as V30
-            FROM {snapshot_table} h
-            WHERE h.DS = {snap_date}
-              AND h.THEATER_NAME = '{_theater()}'
-              AND h.USE_CASE_EACV > 0
-        """)
-        if hist_rows and (float(hist_rows[0].get("V7", 0) or 0) > 0 or float(hist_rows[0].get("V30", 0) or 0) > 0):
-            hist_rows[0]["QTR"] = q_label
-            hist_velocities.append(hist_rows[0])
-    return {
-        "current": {
-            "v7": float(current.get("V7", 0) or 0),
-            "v14": float(current.get("V14", 0) or 0),
-            "v30": float(current.get("V30", 0) or 0),
-        },
-        "historical": hist_velocities,
-    }
+    period_labels = {"hist_q1": f"{CONFIG['prior_fy_label']} Q1",
+                     "hist_q2": f"{CONFIG['prior_fy_label']} Q2",
+                     "hist_q3": f"{CONFIG['prior_fy_label']} Q3",
+                     "hist_q4": f"{CONFIG['prior_fy_label']} Q4"}
+    for r in rows:
+        period = r.get("PERIOD", "")
+        v7 = float(r.get("V7", 0) or 0)
+        v14 = float(r.get("V14", 0) or 0)
+        v30 = float(r.get("V30", 0) or 0)
+        if period == "current":
+            current = {"v7": v7, "v14": v14, "v30": v30}
+        elif period in period_labels and (v7 > 0 or v30 > 0):
+            hist_velocities.append({"QTR": period_labels[period], "V7": v7, "V14": v14, "V30": v30})
+    return {"current": current, "historical": hist_velocities}
 
 
 def q_risk_adjusted_pipeline_detail():
@@ -1121,55 +1090,26 @@ def q_pipeline_movements():
 
 
 def q_use_case_velocity():
-    def _parse_velocity_row(r):
-        if r and r.get("AVG_TW") is not None:
+    """Stage transition velocity from pre-computed MDM cache.
+    Returns avg time-to-tech-win, won-to-imp, imp-to-deployed for current and prior quarter."""
+    def _parse(r):
+        if r:
             return {
-                "time_to_tw": safe_float(r["AVG_TW"]) if r["AVG_TW"] is not None else None,
-                "won_to_imp_start": safe_float(r["AVG_WON_TO_IMP"]) if r["AVG_WON_TO_IMP"] is not None else None,
-                "won_to_deployed": safe_float(r["AVG_WON_TO_DEPLOYED"]) if r["AVG_WON_TO_DEPLOYED"] is not None else None,
+                "time_to_tw": safe_float(r.get("AVG_TW")) if r.get("AVG_TW") is not None else None,
+                "won_to_imp_start": safe_float(r.get("AVG_WON_TO_IMP")) if r.get("AVG_WON_TO_IMP") is not None else None,
+                "won_to_deployed": safe_float(r.get("AVG_IMP_TO_DEPLOYED")) if r.get("AVG_IMP_TO_DEPLOYED") is not None else None,
             }
         return {"time_to_tw": None, "won_to_imp_start": None, "won_to_deployed": None}
 
-    prior_quarters = CONFIG.get("prior_fy_quarters", [])
-    # DIM_USE_CASE_HISTORY_DS.TIME_WON_TO_DEPLOYED is stale — snapshot not refreshed since 2026-01-13.
-    # Use raven IMPLEMENTATION_START_DATE → DEFAULT_DATE (deployed) for imp-to-deployed.
-    # This avoids double-counting in risk thresholds (stage_4 = imp + deploy, stage_5 = deploy).
-    unions = [f"""
-        SELECT 'current' as PERIOD,
-               AVG(d.TIME_TO_TECH_WIN) as AVG_TW,
-               AVG(CASE WHEN DATEDIFF('day', d.ACTUAL_USE_CASE_WON_DATE, d.IMPLEMENTATION_START_DATE) >= 0
-                    THEN DATEDIFF('day', d.ACTUAL_USE_CASE_WON_DATE, d.IMPLEMENTATION_START_DATE) END) as AVG_WON_TO_IMP,
-               AVG(CASE WHEN u.IMPLEMENTATION_START_DATE IS NOT NULL AND u.DEFAULT_DATE IS NOT NULL
-                         AND DATEDIFF('day', u.IMPLEMENTATION_START_DATE, u.DEFAULT_DATE) >= 0
-                    THEN DATEDIFF('day', u.IMPLEMENTATION_START_DATE, u.DEFAULT_DATE) END) as AVG_WON_TO_DEPLOYED
-        FROM {CONFIG["raven_uc_table"]} u
-        JOIN {CONFIG["raven_acct_table"]} a ON u.VH_ACCOUNT_C = a.SALESFORCE_ACCOUNT_ID
-        JOIN {CONFIG["dim_uc_table"]} d ON u.ID = d.USE_CASE_ID
-        WHERE a.GVP = '{CONFIG["gvp_name"]}'
-          AND u.USE_CASE_ACV > 0 AND u.IS_WENT_LIVE = TRUE
-          AND u.DEFAULT_DATE BETWEEN '{CONFIG["quarter_start"]}' AND '{CONFIG["quarter_end"]}'
-    """]
-    if prior_quarters:
-        pq_start, pq_end = prior_quarters[-1]
-        unions.append(f"""
-        SELECT 'prior' as PERIOD,
-               AVG(d.TIME_TO_TECH_WIN) as AVG_TW,
-               AVG(CASE WHEN DATEDIFF('day', d.ACTUAL_USE_CASE_WON_DATE, d.IMPLEMENTATION_START_DATE) >= 0
-                    THEN DATEDIFF('day', d.ACTUAL_USE_CASE_WON_DATE, d.IMPLEMENTATION_START_DATE) END) as AVG_WON_TO_IMP,
-               AVG(CASE WHEN u.IMPLEMENTATION_START_DATE IS NOT NULL AND u.DEFAULT_DATE IS NOT NULL
-                         AND DATEDIFF('day', u.IMPLEMENTATION_START_DATE, u.DEFAULT_DATE) >= 0
-                    THEN DATEDIFF('day', u.IMPLEMENTATION_START_DATE, u.DEFAULT_DATE) END) as AVG_WON_TO_DEPLOYED
-        FROM {CONFIG["raven_uc_table"]} u
-        JOIN {CONFIG["raven_acct_table"]} a ON u.VH_ACCOUNT_C = a.SALESFORCE_ACCOUNT_ID
-        JOIN {CONFIG["dim_uc_table"]} d ON u.ID = d.USE_CASE_ID
-        WHERE a.GVP = '{CONFIG["gvp_name"]}'
-          AND u.USE_CASE_ACV > 0 AND u.IS_WENT_LIVE = TRUE
-          AND u.DEFAULT_DATE BETWEEN '{pq_start}' AND '{pq_end}'
-        """)
-    rows = run_query(" UNION ALL ".join(unions))
+    gvp = CONFIG["gvp_name"]
+    rows = run_query(f"""
+        SELECT PERIOD, AVG_TW, AVG_WON_TO_IMP, AVG_IMP_TO_DEPLOYED
+        FROM SNOWPUBLIC.STREAMLIT.VELOCITY_CACHE
+        WHERE ACCOUNT_GVP = '{gvp}' AND METRIC_TYPE = 'stage_transition'
+    """)
     row_map = {r["PERIOD"]: r for r in rows}
-    current = _parse_velocity_row(row_map.get("current"))
-    prior = _parse_velocity_row(row_map.get("prior")) if prior_quarters else {"time_to_tw": None, "won_to_imp_start": None, "won_to_deployed": None}
+    current = _parse(row_map.get("current"))
+    prior = _parse(row_map.get("prior"))
     return {"current": current, "prior": prior}
 
 
