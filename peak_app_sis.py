@@ -559,6 +559,9 @@ def q_last7_deployed():
 
 
 def q_deployment_velocity():
+    # Velocity cache is a point-in-time snapshot — only meaningful for current quarter
+    if not CONFIG.get("is_current_quarter", True):
+        return {"current": {"v7": 0, "v14": 0, "v30": 0}, "historical": []}
     gvp = CONFIG["gvp_name"]
     rows = run_query(f"""
         SELECT PERIOD, V7, V14, V30
@@ -1195,6 +1198,10 @@ def q_pipeline_movements():
     Imp started = stage moved into Implementation In Progress (go-live in FQ).
     Won to imp  = stage moved from Won to Implementation (go-live in FQ).
     Net new     = UC created in last 7 days with go-live in FQ."""
+    # Pipeline movements cache is a rolling 7-day snapshot — only meaningful for current quarter
+    empty = {k: {"count": 0, "acv": 0} for k in ("won_to_imp", "won_to_lost", "pushed_out", "pulled_in", "imp_started", "new_pipeline")}
+    if not CONFIG.get("is_current_quarter", True):
+        return empty
     gvp = CONFIG["gvp_name"]
     rows = run_query(f"""
         SELECT METRIC, CNT, ACV
