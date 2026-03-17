@@ -98,7 +98,7 @@ CONFIG = {
     "si_technical_use_case": "%AI: Snowflake Intelligence & Agents%",
     "si_campaign_analyst": "%Cortex Analyst%",
     "si_campaign_search": "%Cortex Search%",
-    "dim_uc_direct_table": "MDM.MDM_INTERFACES.DIM_USE_CASE",
+    "dim_uc_direct_table": "SNOWPUBLIC.STREAMLIT.V_DIM_USE_CASE",
     "tb_ingest_table": "SALES.SALES_BI.SALES_PROGRAMS_BRONZE_INGEST",
     "tb_goals_table": "SALES.SALES_BI.SALES_PROGRAMS_SUCCESS_GOALS",
     "bronze_feature": "%Make Your Data AI Ready%",
