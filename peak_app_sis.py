@@ -10,7 +10,7 @@ import os
 import re
 import time
 import html as html_lib
-from datetime import datetime
+from datetime import datetime, date
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -128,6 +128,72 @@ GVP_THEATER_MAP = {
 def _theater():
     """Return the theater name for the current GVP."""
     return GVP_THEATER_MAP.get(CONFIG["gvp_name"], CONFIG["gvp_name"])
+
+
+def compute_fiscal_quarters():
+    """Return list of fiscal quarter dicts for selector.
+    Snowflake FY starts Feb 1: Q1=Feb-Apr, Q2=May-Jul, Q3=Aug-Oct, Q4=Nov-Jan.
+    Includes all quarters in current FY + prior FY."""
+    today = date.today()
+    m, y = today.month, today.year
+
+    # Determine current FY and quarter
+    if m >= 2:
+        fy = y + 1
+        if m <= 4:
+            current_q = 1
+        elif m <= 7:
+            current_q = 2
+        elif m <= 10:
+            current_q = 3
+        else:
+            current_q = 4
+    else:  # January
+        fy = y
+        current_q = 4
+
+    # Quarter boundary helper: given FY and Q, return (start, end, cal_year_of_start)
+    def _qtr_dates(fiscal_year, q):
+        # FY starts in Feb of (fiscal_year - 1)
+        base_year = fiscal_year - 1
+        if q == 1:
+            return (date(base_year, 2, 1), date(base_year, 4, 30))
+        elif q == 2:
+            return (date(base_year, 5, 1), date(base_year, 7, 31))
+        elif q == 3:
+            return (date(base_year, 8, 1), date(base_year, 10, 31))
+        else:  # Q4
+            return (date(base_year, 11, 1), date(base_year + 1, 1, 31))
+
+    quarters = []
+    # Prior FY (all 4 quarters)
+    prior_fy = fy - 1
+    for q in range(1, 5):
+        s, e = _qtr_dates(prior_fy, q)
+        quarters.append({
+            "label": f"FY{prior_fy % 100}-Q{q}",
+            "start": s.strftime("%Y-%m-%d"),
+            "end": e.strftime("%Y-%m-%d"),
+            "fy": prior_fy,
+            "q": q,
+            "is_current": False,
+            "fiscal_quarter_key": f"{prior_fy}-Q{q}",
+        })
+    # Current FY (all 4 quarters)
+    for q in range(1, 5):
+        s, e = _qtr_dates(fy, q)
+        is_current = (q == current_q)
+        quarters.append({
+            "label": f"FY{fy % 100}-Q{q}",
+            "start": s.strftime("%Y-%m-%d"),
+            "end": e.strftime("%Y-%m-%d"),
+            "fy": fy,
+            "q": q,
+            "is_current": is_current,
+            "fiscal_quarter_key": f"{fy}-Q{q}",
+        })
+
+    return quarters
 
 
 # =============================================================================
@@ -260,62 +326,42 @@ def update_risk_thresholds_from_velocity(velocity):
 # SQL QUERIES
 # =============================================================================
 
-def q_fiscal_calendar():
-    # Snowflake fiscal year starts Feb 1. Compute inline to avoid dependency on CORE_FISCAL_DATES.
-    rows = run_query("""
-        SELECT
-            CASE
-                WHEN MONTH(CURRENT_DATE()) >= 2 THEN YEAR(CURRENT_DATE()) + 1
-                ELSE YEAR(CURRENT_DATE())
-            END AS FISCAL_YEAR,
-            CASE
-                WHEN MONTH(CURRENT_DATE()) IN (2,3,4) THEN 'Q1'
-                WHEN MONTH(CURRENT_DATE()) IN (5,6,7) THEN 'Q2'
-                WHEN MONTH(CURRENT_DATE()) IN (8,9,10) THEN 'Q3'
-                ELSE 'Q4'
-            END AS FISCAL_QUARTER,
-            CASE
-                WHEN MONTH(CURRENT_DATE()) IN (2,3,4) THEN DATE_FROM_PARTS(YEAR(CURRENT_DATE()), 2, 1)
-                WHEN MONTH(CURRENT_DATE()) IN (5,6,7) THEN DATE_FROM_PARTS(YEAR(CURRENT_DATE()), 5, 1)
-                WHEN MONTH(CURRENT_DATE()) IN (8,9,10) THEN DATE_FROM_PARTS(YEAR(CURRENT_DATE()), 8, 1)
-                WHEN MONTH(CURRENT_DATE()) IN (11,12) THEN DATE_FROM_PARTS(YEAR(CURRENT_DATE()), 11, 1)
-                ELSE DATE_FROM_PARTS(YEAR(CURRENT_DATE()) - 1, 11, 1)
-            END AS FQ_START,
-            CASE
-                WHEN MONTH(CURRENT_DATE()) IN (2,3,4) THEN DATE_FROM_PARTS(YEAR(CURRENT_DATE()), 4, 30)
-                WHEN MONTH(CURRENT_DATE()) IN (5,6,7) THEN DATE_FROM_PARTS(YEAR(CURRENT_DATE()), 7, 31)
-                WHEN MONTH(CURRENT_DATE()) IN (8,9,10) THEN DATE_FROM_PARTS(YEAR(CURRENT_DATE()), 10, 31)
-                WHEN MONTH(CURRENT_DATE()) IN (11,12) THEN DATE_FROM_PARTS(YEAR(CURRENT_DATE()) + 1, 1, 31)
-                ELSE DATE_FROM_PARTS(YEAR(CURRENT_DATE()), 1, 31)
-            END AS FQ_END
-    """)
-    assert len(rows) == 1, f"Expected 1 fiscal calendar row, got {len(rows)}"
-    fiscal = rows[0]
-    fy = safe_int(fiscal["FISCAL_YEAR"])
-    fq_start = safe_str(fiscal["FQ_START"]).strip('"')
-    fq_end = safe_str(fiscal["FQ_END"]).strip('"')
+def q_fiscal_calendar(selected_quarter):
+    # Use the selected quarter's pre-computed dates instead of CURRENT_DATE()
+    fq_start = selected_quarter["start"]
+    fq_end = selected_quarter["end"]
+    fy = selected_quarter["fy"]
+    q_num = selected_quarter["q"]
+    fq_label = f"Q{q_num}"
+    ref_date = CONFIG["reference_date"]
+
     CONFIG["quarter_start"] = fq_start
     CONFIG["quarter_end"] = fq_end
     CONFIG["fiscal_year"] = fy
     CONFIG["fiscal_year_label"] = f"FY{fy % 100}"
     CONFIG["prior_fy_label"] = f"FY{(fy - 1) % 100}"
-    fq_label = safe_str(fiscal.get("FISCAL_QUARTER", "Q1"))
     CONFIG["fiscal_quarter"] = f"FY{fy}-{fq_label}"
 
-    # Compute day/week number
-    day_number = None
-    week_number = None
+    fiscal = {
+        "FISCAL_YEAR": fy,
+        "FISCAL_QUARTER": fq_label,
+        "FQ_START": fq_start,
+        "FQ_END": fq_end,
+    }
+
+    # Compute day/week number relative to reference_date
     day_rows = run_query(f"""
-        SELECT DATEDIFF('day', '{fq_start}'::DATE, CURRENT_DATE()) + 1 AS DAY_NUMBER,
-               CEIL((DATEDIFF('day', '{fq_start}'::DATE, CURRENT_DATE()) + 1) / 7.0) AS WEEK_NUMBER
+        SELECT DATEDIFF('day', '{fq_start}'::DATE, {ref_date}) + 1 AS DAY_NUMBER,
+               CEIL((DATEDIFF('day', '{fq_start}'::DATE, {ref_date}) + 1) / 7.0) AS WEEK_NUMBER
     """)
-    if day_rows:
-        day_number = safe_int(day_rows[0].get("DAY_NUMBER", 0))
-        week_number = safe_int(day_rows[0].get("WEEK_NUMBER", 0))
+    day_number = safe_int(day_rows[0].get("DAY_NUMBER", 0)) if day_rows else 0
+    week_number = safe_int(day_rows[0].get("WEEK_NUMBER", 0)) if day_rows else 0
     fiscal["DAY_NUMBER"] = day_number
     fiscal["WEEK_NUMBER"] = week_number
+
+    # Days remaining from reference_date to quarter end
     fiscal["DAYS_REMAINING"] = None
-    dr_rows = run_query(f"SELECT DATEDIFF('day', CURRENT_DATE(), '{fq_end}'::DATE) + 1 AS DAYS_REMAINING")
+    dr_rows = run_query(f"SELECT DATEDIFF('day', {ref_date}, '{fq_end}'::DATE) + 1 AS DAYS_REMAINING")
     if dr_rows:
         fiscal["DAYS_REMAINING"] = safe_int(dr_rows[0].get("DAYS_REMAINING", 0))
         CONFIG["days_remaining"] = fiscal["DAYS_REMAINING"]
@@ -352,13 +398,14 @@ def q_fiscal_calendar():
 
 
 def q_qtd_revenue():
+    fq_key = CONFIG["fiscal_quarter_key"]
     rows = run_query(f"""
         SELECT FORECAST_TYPE, FORECAST_AMOUNT
         FROM SALES.REPORTING.PEAK_FORECAST_CALLS_PIPELINE_TARGETS
         WHERE USER_NAME = '{CONFIG["gvp_name"]}'
           AND FUNCTION = '{CONFIG["gvp_function"]}'
           AND TYPE = 'Consumption'
-          AND CURRENT_FISCAL_QUARTER = TRUE
+          AND FISCAL_QUARTER = '{fq_key}'
           AND LATEST_DATE = TRUE
     """)
     assert len(rows) == 3, f"Expected 3 revenue rows, got {len(rows)}"
@@ -384,6 +431,7 @@ def q_qtd_revenue():
 
 
 def q_forecast_calls():
+    fq_key = CONFIG["fiscal_quarter_key"]
     rows = run_query(f"""
         SELECT FORECAST_TYPE, FORECAST_AMOUNT, LATEST_DATE, PREVIOUS_WEEK
         FROM SALES.REPORTING.PEAK_FORECAST_CALLS_PIPELINE_TARGETS
@@ -391,7 +439,7 @@ def q_forecast_calls():
           AND FUNCTION = '{CONFIG["gvp_function"]}'
           AND TYPE = 'Use Case Go-Lives'
           AND FORECAST_TYPE IN ('CommitForecast', 'MostLikelyForecast', 'BestCaseForecast', 'Target')
-          AND CURRENT_FISCAL_QUARTER = TRUE
+          AND FISCAL_QUARTER = '{fq_key}'
           AND (LATEST_DATE = TRUE OR PREVIOUS_WEEK = TRUE)
     """)
     current = {}
@@ -430,6 +478,7 @@ def q_deployed_qtd():
 
 
 def q_last7_deployed():
+    ref_date = CONFIG["reference_date"]
     rows = run_query(f"""
         SELECT SUM(u.USE_CASE_ACV) as LAST7_ACV, COUNT(*) as LAST7_COUNT
         FROM {CONFIG["raven_uc_table"]} u
@@ -437,13 +486,16 @@ def q_last7_deployed():
         WHERE a.GVP = '{CONFIG["gvp_name"]}'
           AND u.USE_CASE_ACV > 0
           AND u.IS_WENT_LIVE = TRUE
-          AND u.DEFAULT_DATE >= DATEADD('day', -7, CURRENT_DATE())
+          AND u.DEFAULT_DATE >= DATEADD('day', -7, {ref_date})
+          AND u.DEFAULT_DATE <= {ref_date}
     """)
     r = rows[0]
     return {"acv": safe_float(r["LAST7_ACV"] or 0), "count": safe_int(r["LAST7_COUNT"] or 0)}
 
 
 def q_deployment_velocity():
+    if not CONFIG.get("is_current_quarter"):
+        return {"current": {"v7": 0, "v14": 0, "v30": 0}, "historical": []}
     gvp = CONFIG["gvp_name"]
     rows = run_query(f"""
         SELECT PERIOD, V7, V14, V30
@@ -471,11 +523,12 @@ def q_deployment_velocity():
 
 def q_risk_adjusted_pipeline_detail():
     excluded = ", ".join(f"'{s}'" for s in CONFIG["excluded_stages"])
+    ref_date = CONFIG["reference_date"]
     return run_query(f"""
         WITH fiscal_qtr AS (
             SELECT '{CONFIG["quarter_start"]}'::DATE AS FQ_START,
                    '{CONFIG["quarter_end"]}'::DATE AS FQ_END,
-                   DATEDIFF('day', CURRENT_DATE(), '{CONFIG["quarter_end"]}'::DATE) + 1 AS DAYS_REMAINING
+                   DATEDIFF('day', {ref_date}, '{CONFIG["quarter_end"]}'::DATE) + 1 AS DAYS_REMAINING
         )
         SELECT u.USE_CASE_ID, u.USE_CASE_NAME, u.ACCOUNT_NAME, r.USE_CASE_ACV as USE_CASE_EACV,
                u.STAGE_NUMBER, r.USE_CASE_STAGE, u.DAYS_IN_STAGE, r.GO_LIVE_DATE,
@@ -517,11 +570,12 @@ def q_open_pipeline():
 
 def q_pipeline_risk():
     excluded = ", ".join(f"'{s}'" for s in CONFIG["excluded_stages"])
+    ref_date = CONFIG["reference_date"]
     rows = run_query(f"""
         WITH fiscal_qtr AS (
             SELECT '{CONFIG["quarter_start"]}'::DATE AS FQ_START,
                    '{CONFIG["quarter_end"]}'::DATE AS FQ_END,
-                   DATEDIFF('day', CURRENT_DATE(), '{CONFIG["quarter_end"]}'::DATE) + 1 AS DAYS_REMAINING
+                   DATEDIFF('day', {ref_date}, '{CONFIG["quarter_end"]}'::DATE) + 1 AS DAYS_REMAINING
         )
         SELECT
             CASE
@@ -806,6 +860,8 @@ def _create_cc_temp_table():
 
 def q_cortex_code_theater_usage():
     """Cortex Code usage across ALL accounts with open pipeline go-lives in the quarter."""
+    if not CONFIG.get("is_current_quarter"):
+        return {"total_accounts": 0, "cc_accounts": 0, "pct": 0, "avg_users": 0, "requests": 0, "credits": 0}
     excluded = ", ".join(f"'{s}'" for s in CONFIG["excluded_stages"])
     try:
         # Step 1: Get all go-live account IDs
@@ -850,6 +906,8 @@ def q_cortex_code_theater_usage():
 
 def q_cortex_code_by_account(account_ids):
     """Cortex Code usage per account for use case tables."""
+    if not CONFIG.get("is_current_quarter"):
+        return {}
     if not account_ids:
         return {}
     id_list = ", ".join(f"'{aid}'" for aid in account_ids if aid)
@@ -1070,6 +1128,8 @@ def q_pipeline_movements():
     Imp started = stage moved into Implementation In Progress (go-live in FQ).
     Won to imp  = stage moved from Won to Implementation (go-live in FQ).
     Net new     = UC created in last 7 days with go-live in FQ."""
+    if not CONFIG.get("is_current_quarter"):
+        return {k: {"count": 0, "acv": 0} for k in ("won_to_imp", "won_to_lost", "pushed_out", "pulled_in", "imp_started", "new_pipeline")}
     gvp = CONFIG["gvp_name"]
     rows = run_query(f"""
         SELECT METRIC, CNT, ACV
@@ -1091,6 +1151,8 @@ def q_use_case_velocity():
     """Stage transition velocity from pre-computed MDM cache.
     Self-calculated DATEDIFFs for UCs created >= 2025-02-01, all stages.
     Returns avg created-to-TW, TW-to-imp-start, imp-start-to-deployed."""
+    if not CONFIG.get("is_current_quarter"):
+        return {"time_to_tw": None, "tw_to_imp_start": None, "imp_to_deployed": None}
     gvp = CONFIG["gvp_name"]
     rows = run_query(f"""
         SELECT AVG_TW, AVG_TW_TO_IMP, AVG_IMP_TO_DEPLOYED
@@ -1145,19 +1207,20 @@ def q_si_created_qtd():
 
 def q_current_pipeline_phases():
     excluded = ", ".join(f"'{s}'" for s in CONFIG["excluded_stages"])
+    ref_date = CONFIG["reference_date"]
     rows = run_query(f"""
         SELECT
             CASE
                 WHEN u.IS_WENT_LIVE = TRUE AND u.DEFAULT_DATE BETWEEN '{CONFIG["quarter_start"]}' AND '{CONFIG["quarter_end"]}'
                     THEN 'Already Deployed'
-                WHEN u.IMPLEMENTATION_START_DATE <= CURRENT_DATE()
+                WHEN u.IMPLEMENTATION_START_DATE <= {ref_date}
                     AND u.IS_WENT_LIVE = FALSE AND u.IS_LOST = FALSE THEN 'In Implementation'
-                WHEN u.TECHNICAL_WIN_DATE_FORECAST_C <= CURRENT_DATE()
-                    AND (u.IMPLEMENTATION_START_DATE > CURRENT_DATE() OR u.IMPLEMENTATION_START_DATE IS NULL)
+                WHEN u.TECHNICAL_WIN_DATE_FORECAST_C <= {ref_date}
+                    AND (u.IMPLEMENTATION_START_DATE > {ref_date} OR u.IMPLEMENTATION_START_DATE IS NULL)
                     AND u.IS_WENT_LIVE = FALSE AND u.IS_LOST = FALSE THEN 'Post-TW / Pre-Imp'
-                WHEN u.CREATED_DATE <= CURRENT_DATE()
-                    AND (u.TECHNICAL_WIN_DATE_FORECAST_C > CURRENT_DATE() OR u.TECHNICAL_WIN_DATE_FORECAST_C IS NULL)
-                    AND (u.IMPLEMENTATION_START_DATE > CURRENT_DATE() OR u.IMPLEMENTATION_START_DATE IS NULL)
+                WHEN u.CREATED_DATE <= {ref_date}
+                    AND (u.TECHNICAL_WIN_DATE_FORECAST_C > {ref_date} OR u.TECHNICAL_WIN_DATE_FORECAST_C IS NULL)
+                    AND (u.IMPLEMENTATION_START_DATE > {ref_date} OR u.IMPLEMENTATION_START_DATE IS NULL)
                     AND u.IS_WENT_LIVE = FALSE AND u.IS_LOST = FALSE THEN 'Pre-TW'
                 ELSE 'Other'
             END as PIPELINE_PHASE,
@@ -2167,8 +2230,19 @@ PLAY_OPTIONS = {
 # DATA LOADING (parallel with ThreadPoolExecutor)
 # =============================================================================
 
-def _run_all_queries(gvp_name):
+def _run_all_queries(gvp_name, selected_quarter):
     CONFIG["gvp_name"] = gvp_name
+    CONFIG["is_current_quarter"] = selected_quarter["is_current"]
+    # For current quarter, use CURRENT_DATE(); for past, use quarter end; for future, use quarter start
+    if selected_quarter["is_current"]:
+        CONFIG["reference_date"] = "CURRENT_DATE()"
+    else:
+        # If quarter end is in the past, use quarter end as reference
+        if date.fromisoformat(selected_quarter["end"]) < date.today():
+            CONFIG["reference_date"] = f"'{selected_quarter['end']}'::DATE"
+        else:
+            CONFIG["reference_date"] = f"'{selected_quarter['start']}'::DATE"
+    CONFIG["fiscal_quarter_key"] = selected_quarter["fiscal_quarter_key"]
     total_steps = 10
     completed = [0]
     progress = st.progress(0, text="Connecting to Snowflake...")
@@ -2179,7 +2253,7 @@ def _run_all_queries(gvp_name):
 
     # --- Phase 0: Sequential setup (sets CONFIG values needed by later queries) ---
     _tick("Fiscal calendar & velocity...")
-    fiscal = q_fiscal_calendar()
+    fiscal = q_fiscal_calendar(selected_quarter)
     CONFIG["day_number"] = safe_int(fiscal["DAY_NUMBER"])
     uc_velocity = q_use_case_velocity()
     update_risk_thresholds_from_velocity(uc_velocity)
@@ -2348,14 +2422,14 @@ def _run_all_queries(gvp_name):
     }
 
 
-def load_all_data(gvp_name):
-    cache_key = f"peak_data_{gvp_name}"
+def load_all_data(gvp_name, selected_quarter):
+    cache_key = f"peak_data_{gvp_name}_{selected_quarter['label']}"
     cached = st.session_state.get(cache_key)
     if cached is not None:
         loaded_at = cached.get("_loaded_at")
         if loaded_at and (datetime.now() - loaded_at).total_seconds() < 600:
             return cached
-    data = _run_all_queries(gvp_name)
+    data = _run_all_queries(gvp_name, selected_quarter)
     st.session_state[cache_key] = data
     return data
 
@@ -2958,6 +3032,15 @@ def main():
             index=GVP_OPTIONS.index("Mark Fleming"),
             help="Select GVP to view. Changing GVP reloads all data.",
         )
+        all_quarters = compute_fiscal_quarters()
+        quarter_labels = [q["label"] for q in all_quarters]
+        current_idx = next((i for i, q in enumerate(all_quarters) if q["is_current"]), len(all_quarters) - 1)
+        selected_quarter_label = st.selectbox(
+            "Fiscal Quarter", options=quarter_labels,
+            index=current_idx,
+            help="Select fiscal quarter. Current quarter is the default.",
+        )
+        selected_quarter = all_quarters[quarter_labels.index(selected_quarter_label)]
         play_labels = list(PLAY_OPTIONS.keys())
         selected_play_label = st.selectbox(
             "Sales Play (Script tab only)", options=play_labels, index=0,
@@ -2965,7 +3048,7 @@ def main():
             help="Select which Sales Play to feature in the Script tab.",
         )
         st.markdown("---")
-        cache_key = f"peak_data_{selected_gvp}"
+        cache_key = f"peak_data_{selected_gvp}_{selected_quarter_label}"
         cached = st.session_state.get(cache_key)
         if cached and cached.get("_loaded_at"):
             last_refresh = cached["_loaded_at"].strftime('%H:%M:%S')
@@ -2978,7 +3061,7 @@ def main():
                     del st.session_state[key]
             st.rerun()
 
-    data = load_all_data(selected_gvp)
+    data = load_all_data(selected_gvp, selected_quarter)
     for k, v in data["_config"].items():
         if v is not None:
             CONFIG[k] = v
@@ -2990,7 +3073,9 @@ def main():
     days_remaining = safe_int(fiscal["DAYS_REMAINING"])
 
     st.markdown(f"## PEAK Forecasting — {selected_gvp}")
-    st.markdown(f"**{quarter}** ({qstart} - {qend}) | **{days_remaining} days remaining**")
+    if not selected_quarter["is_current"]:
+        st.info(f"Viewing **{selected_quarter_label}** (historical). Cache-based metrics (velocity, pipeline movements, Cortex Code usage) are only available for the current quarter.")
+    st.markdown(f"**{selected_quarter_label} ({quarter})** ({qstart} - {qend}) | **{days_remaining} days remaining**")
 
     tab_script, tab_golives, tab_forecast = st.tabs([
         "Script", "Use Case Go-Lives", "Forecast Analysis",
