@@ -742,7 +742,7 @@ def _play_use_cases_query(play_name, extra_join, filter_clause):
         JOIN {CONFIG["raven_acct_table"]} a ON u.VH_ACCOUNT_C = a.SALESFORCE_ACCOUNT_ID
         {extra_join}
         WHERE a.GVP = '{CONFIG["gvp_name"]}'
-          AND u.USE_CASE_ACV >= {CONFIG["play_threshold"]}
+          AND u.USE_CASE_ACV > 0
           AND u.IS_WENT_LIVE = FALSE AND u.IS_LOST = FALSE
           AND u.GO_LIVE_DATE BETWEEN '{CONFIG["quarter_start"]}' AND '{CONFIG["quarter_end"]}'
           AND u.USE_CASE_STAGE NOT IN ({excluded}) AND {filter_clause}
@@ -2629,9 +2629,7 @@ Our open pipeline is <strong>{fmt_currency(pipeline["acv"])}</strong>, giving us
 <h3 style="color: #333; border-bottom: 2px solid #007bff; padding-bottom: 8px;">Pipeline (Last 7 Days)</h3>
 <p>In the last 7 days, <strong>{pm_pushed_out["count"]}</strong> use cases (<strong>{fmt_currency(pm_pushed_out["acv"])}</strong>) were pushed out of the quarter
 while <strong>{pm_pulled_in["count"]}</strong> (<strong>{fmt_currency(pm_pulled_in["acv"])}</strong>) were pulled in.
-<strong>{pm_imp_started["count"]}</strong> use cases (<strong>{fmt_currency(pm_imp_started["acv"])}</strong>) started implementation with a go-live this quarter &mdash;
-of those, <strong>{pm_won_to_imp["count"]}</strong> (<strong>{fmt_currency(pm_won_to_imp["acv"])}</strong>) were won in prior quarters.
-<strong>{pm_won_to_lost["count"]}</strong> prior-quarter wins (<strong>{fmt_currency(pm_won_to_lost["acv"])}</strong>) were lost.
+<strong>{pm_imp_started["count"]}</strong> use cases (<strong>{fmt_currency(pm_imp_started["acv"])}</strong>) started implementation with a go-live this quarter.
 Net new pipeline (created in the last 7 days with a current-quarter go-live): <strong>{pm_new_pipeline["count"]}</strong> use cases, <strong>{fmt_currency(pm_new_pipeline["acv"])}</strong>.</p>
 <h3 style="color: #333; border-bottom: 2px solid #007bff; padding-bottom: 8px;">Pacing</h3>
 <p>On Day <strong>{day_number}</strong> of the quarter, our current deployed ACV of <strong>{fmt_currency(deployed["acv"])}</strong>
@@ -2774,9 +2772,9 @@ def render_golives_tab(data):
     si_risk = build_risk_narrative(play_risk["si"])
     sql_risk = build_risk_narrative(play_risk["sqlserver"])
     top5_rows = "\n".join(build_use_case_row(uc, consumption, cc_by_account=cc_by_account) for uc in top5)
-    bronze_rows = "\n".join(build_use_case_row(uc, consumption, bronze_tb=bronze_tb_acct, cc_by_account=cc_by_account, row_type="bronze") for uc in play_use_cases["bronze"])
-    si_rows = "\n".join(build_use_case_row(uc, consumption, si_usage=si_usage, cc_by_account=cc_by_account, row_type="si") for uc in play_use_cases["si"])
-    sql_rows = "\n".join(build_use_case_row(uc, consumption, cc_by_account=cc_by_account, row_type="standard") for uc in play_use_cases["sqlserver"])
+    bronze_rows = "\n".join(build_use_case_row(uc, consumption, bronze_tb=bronze_tb_acct, cc_by_account=cc_by_account, row_type="bronze") for uc in play_use_cases["bronze"][:3])
+    si_rows = "\n".join(build_use_case_row(uc, consumption, si_usage=si_usage, cc_by_account=cc_by_account, row_type="si") for uc in play_use_cases["si"][:3])
+    sql_rows = "\n".join(build_use_case_row(uc, consumption, cc_by_account=cc_by_account, row_type="standard") for uc in play_use_cases["sqlserver"][:3])
     day_avg = fmt_currency(pacing["day_avg"])
     day_pct = fmt_pct(pacing["day_pct"])
     week_avg = fmt_currency(pacing["week_avg"])
@@ -2943,7 +2941,7 @@ def render_golives_tab(data):
 </table>
 
 <div class="play-section">
-<h3>Bronze Ingest - Use Cases &ge;$500K</h3>
+<h3>Bronze Ingest - Top 3 Use Cases</h3>
 <div class="analysis"><strong>QTD TB Ingested:</strong> {bronze_tb_total:.1f} TB<br>
 <strong>Average ACV:</strong> {fmt_currency(play_detail["bronze"]["avg_acv"])} | <strong>Median ACV:</strong> {fmt_currency(play_detail["bronze"]["median_acv"])} | across {play_detail["bronze"]["count"]} use cases.
 <strong>Regional Coverage:</strong> {play_detail["bronze"]["regions"]} of 8 {_theater()} regions contributing.</div>
@@ -2952,7 +2950,7 @@ def render_golives_tab(data):
 </div>
 
 <div class="play-section">
-<h3>Snowflake Intelligence - Use Cases &ge;$500K</h3>
+<h3>Snowflake Intelligence - Top 3 Use Cases</h3>
 <div class="analysis"><strong>Theater SI Usage (Last 30 Days):</strong> {si_theater["accounts"]:,} Accounts | {si_theater["users"]:,} Users | {si_theater["credits"]:,} Credits | {fmt_currency(si_theater["revenue"])} Revenue<br>
 <strong>Average ACV:</strong> {fmt_currency(play_detail["si"]["avg_acv"])} | <strong>Median ACV:</strong> {fmt_currency(play_detail["si"]["median_acv"])} | across {play_detail["si"]["count"]} use cases.
 <strong>Regional Coverage:</strong> {play_detail["si"]["regions"]} of 8 {_theater()} regions contributing.</div>
@@ -2961,7 +2959,7 @@ def render_golives_tab(data):
 </div>
 
 <div class="play-section">
-<h3>SQL Server Migration - Use Cases &ge;$500K</h3>
+<h3>SQL Server Migration - Top 3 Use Cases</h3>
 <div class="analysis"><strong>Average ACV:</strong> {fmt_currency(play_detail["sqlserver"]["avg_acv"])} | <strong>Median ACV:</strong> {fmt_currency(play_detail["sqlserver"]["median_acv"])} | across {play_detail["sqlserver"]["count"]} use cases.
 <strong>Regional Coverage:</strong> {play_detail["sqlserver"]["regions"]} of 8 {_theater()} regions contributing.</div>
 <div class="risk-box"><strong>Risk Summary ({sql_risk["at_risk"]} of {sql_risk["total"]} use cases, {fmt_currency(sql_risk["acv_at_risk"])} ACV at risk):</strong><br>{sql_risk["narrative_html"]}</div>
