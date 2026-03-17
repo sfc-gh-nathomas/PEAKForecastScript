@@ -98,12 +98,6 @@ CONFIG = {
     "si_technical_use_case": "%AI: Snowflake Intelligence & Agents%",
     "si_campaign_analyst": "%Cortex Analyst%",
     "si_campaign_search": "%Cortex Search%",
-    "dim_uc_direct_table": "MDM.MDM_INTERFACES.DIM_USE_CASE",
-    "tb_ingest_table": "SALES.SALES_BI.SALES_PROGRAMS_BRONZE_INGEST",
-    "tb_goals_table": "SALES.SALES_BI.SALES_PROGRAMS_SUCCESS_GOALS",
-    "bronze_feature": "%Make Your Data AI Ready%",
-    "sqlserver_feature": "%Modernize Your Data Estate%",
-    "si_technical_uc": "%Snowflake Intelligence%",
     "excluded_stages": ("Not In Pursuit", "Use Case Lost"),
     "dim_excluded_stages": ("0 - Not In Pursuit", "8 - Use Case Lost"),
     "pursuit_stages": ("Discovery", "Scoping", "Technical / Business Validation"),
@@ -594,29 +588,6 @@ def _use_case_select_cols():
     """
 
 
-def _dim_use_case_select_cols():
-    return """
-        u.USE_CASE_ID,
-        u.ACCOUNT_ID,
-        u.USE_CASE_NUMBER,
-        u.ACCOUNT_NAME,
-        u.USE_CASE_NAME,
-        u.USE_CASE_EACV,
-        u.GO_LIVE_FORECAST_STATUS as FORECAST_CATEGORY,
-        u.GO_LIVE_DATE,
-        u.USE_CASE_STAGE,
-        u.SE_COMMENTS,
-        u.NEXT_STEPS,
-        u.USE_CASE_RISK,
-        u.ACCOUNT_OWNER_NAME as ACCOUNT_EXECUTIVE_NAME,
-        u.USE_CASE_LEAD_SE_NAME,
-        u.REGION_NAME,
-        u.USE_CASE_DESCRIPTION,
-        u.IMPLEMENTER,
-        u.PARTNER_NAME
-    """
-
-
 def q_top5_use_cases():
     excluded = ", ".join(f"'{s}'" for s in CONFIG["excluded_stages"])
     return run_query(f"""
@@ -631,48 +602,61 @@ def q_top5_use_cases():
     """)
 
 
-def _play_summary_query(play_name, filter_clause, is_deployed):
+def _play_summary_query(play_name, extra_join, filter_clause, is_deployed):
+    excluded = ", ".join(f"'{s}'" for s in CONFIG["excluded_stages"])
     if is_deployed:
-        deploy_filter = f"u.GO_LIVE_DATE BETWEEN '{CONFIG['quarter_start']}' AND '{CONFIG['quarter_end']}'"
+        deploy_filter = "u.IS_WENT_LIVE = TRUE"
+        date_filter = f"u.DEFAULT_DATE BETWEEN '{CONFIG['quarter_start']}' AND '{CONFIG['quarter_end']}'"
+        stage_filter = ""
     else:
-        deploy_filter = f"u.USE_CASE_STATUS IN ('In Pursuit', 'Implementation')"
+        deploy_filter = "u.IS_WENT_LIVE = FALSE AND u.IS_LOST = FALSE"
+        date_filter = f"u.GO_LIVE_DATE BETWEEN '{CONFIG['quarter_start']}' AND '{CONFIG['quarter_end']}'"
+        stage_filter = f"AND u.USE_CASE_STAGE NOT IN ({excluded})"
     rows = run_query(f"""
-        SELECT COALESCE(SUM(u.USE_CASE_EACV), 0) as ACV, COUNT(*) as COUNT_
-        FROM {CONFIG["dim_uc_direct_table"]} u
-        WHERE u.THEATER_NAME = '{_theater()}'
-          AND u.USE_CASE_EACV > 0 AND {deploy_filter}
-          AND {filter_clause}
+        SELECT SUM(u.USE_CASE_ACV) as ACV, COUNT(*) as COUNT_
+        FROM {CONFIG["raven_uc_table"]} u
+        JOIN {CONFIG["raven_acct_table"]} a ON u.VH_ACCOUNT_C = a.SALESFORCE_ACCOUNT_ID
+        {extra_join}
+        WHERE a.GVP = '{CONFIG["gvp_name"]}'
+          AND u.USE_CASE_ACV > 0 AND {deploy_filter} AND {date_filter}
+          {stage_filter} AND {filter_clause}
     """)
     r = rows[0]
     return {"acv": safe_float(r["ACV"] or 0), "count": safe_int(r["COUNT_"] or 0)}
 
 
 def q_sales_play_summary():
-    bronze_filter = f"u.PRIORITIZED_FEATURES ILIKE '{CONFIG['bronze_feature']}'"
-    sql_filter = f"u.PRIORITIZED_FEATURES ILIKE '{CONFIG['sqlserver_feature']}'"
-    si_filter = f"u.TECHNICAL_USE_CASE ILIKE '{CONFIG['si_technical_uc']}'"
+    dim_join = f"JOIN {CONFIG['dim_uc_table']} d ON u.ID = d.USE_CASE_ID"
+    bronze_filter = f"u.TECHNICAL_CAMPAIGN_S_C ILIKE '{CONFIG['bronze_campaign']}'"
+    sql_filter = f"u.TECHNICAL_CAMPAIGN_S_C ILIKE '{CONFIG['sqlserver_campaign']}'"
+    si_filter = f"d.TECHNICAL_USE_CASE ILIKE '{CONFIG['si_technical_use_case']}'"
     result = {}
-    for play, filt in [
-        ("bronze", bronze_filter),
-        ("si", si_filter),
-        ("sqlserver", sql_filter),
+    for play, extra_join, filt in [
+        ("bronze", "", bronze_filter),
+        ("si", dim_join, si_filter),
+        ("sqlserver", "", sql_filter),
     ]:
-        result[f"{play}_open"] = _play_summary_query(play, filt, False)
-        result[f"{play}_deployed"] = _play_summary_query(play, filt, True)
+        result[f"{play}_open"] = _play_summary_query(play, extra_join, filt, False)
+        result[f"{play}_deployed"] = _play_summary_query(play, extra_join, filt, True)
     return result
 
 
 def q_play_detail_metrics():
-    def _run(filter_clause):
+    excluded = ", ".join(f"'{s}'" for s in CONFIG["excluded_stages"])
+    dim_join = f"JOIN {CONFIG['dim_uc_table']} d ON u.ID = d.USE_CASE_ID"
+
+    def _run(extra_join, filter_clause):
         rows = run_query(f"""
-            SELECT COUNT(*) as OPEN_COUNT, AVG(u.USE_CASE_EACV) as AVG_ACV,
-                   MEDIAN(u.USE_CASE_EACV) as MEDIAN_ACV,
-                   COUNT(DISTINCT u.REGION_NAME) as REGION_COUNT
-            FROM {CONFIG["dim_uc_direct_table"]} u
-            WHERE u.THEATER_NAME = '{_theater()}'
-              AND u.USE_CASE_EACV > 0
-              AND u.USE_CASE_STATUS IN ('In Pursuit', 'Implementation')
-              AND {filter_clause}
+            SELECT COUNT(*) as OPEN_COUNT, AVG(u.USE_CASE_ACV) as AVG_ACV,
+                   MEDIAN(u.USE_CASE_ACV) as MEDIAN_ACV,
+                   COUNT(DISTINCT a.SALES_AREA) as REGION_COUNT
+            FROM {CONFIG["raven_uc_table"]} u
+            JOIN {CONFIG["raven_acct_table"]} a ON u.VH_ACCOUNT_C = a.SALESFORCE_ACCOUNT_ID
+            {extra_join}
+            WHERE a.GVP = '{CONFIG["gvp_name"]}'
+              AND u.USE_CASE_ACV > 0 AND u.IS_WENT_LIVE = FALSE AND u.IS_LOST = FALSE
+              AND u.GO_LIVE_DATE BETWEEN '{CONFIG["quarter_start"]}' AND '{CONFIG["quarter_end"]}'
+              AND u.USE_CASE_STAGE NOT IN ({excluded}) AND {filter_clause}
         """)
         r = rows[0]
         return {
@@ -680,53 +664,44 @@ def q_play_detail_metrics():
             "median_acv": safe_float(r["MEDIAN_ACV"] or 0), "regions": safe_int(r["REGION_COUNT"] or 0),
         }
     return {
-        "bronze": _run(f"u.PRIORITIZED_FEATURES ILIKE '{CONFIG['bronze_feature']}'"),
-        "si": _run(f"u.TECHNICAL_USE_CASE ILIKE '{CONFIG['si_technical_uc']}'"),
-        "sqlserver": _run(f"u.PRIORITIZED_FEATURES ILIKE '{CONFIG['sqlserver_feature']}'"),
+        "bronze": _run("", f"u.TECHNICAL_CAMPAIGN_S_C ILIKE '{CONFIG['bronze_campaign']}'"),
+        "si": _run(dim_join, f"d.TECHNICAL_USE_CASE ILIKE '{CONFIG['si_technical_use_case']}'"),
+        "sqlserver": _run("", f"u.TECHNICAL_CAMPAIGN_S_C ILIKE '{CONFIG['sqlserver_campaign']}'"),
     }
 
 
 def q_bronze_tb_total():
     rows = run_query(f"""
-        SELECT COALESCE(SUM(TB_INGESTED), 0) as BRONZE_TB
-        FROM {CONFIG["tb_ingest_table"]}
-        WHERE GEO_NAME = '{_theater()}'
-          AND IS_BRONZE = true
+        SELECT SUM(TB_INGESTED) as BRONZE_TB
+        FROM SALES.REPORTING.SALES_PROGRAMS_BRONZE_INGEST
+        WHERE GVP = '{CONFIG["gvp_name"]}'
           AND MONTH BETWEEN '{CONFIG["quarter_start"]}' AND '{CONFIG["quarter_end"]}'
     """)
     return float(rows[0]["BRONZE_TB"] or 0)
 
 
-def q_bronze_tb_target():
-    """Fetch TB Ingested target from SALES_PROGRAMS_SUCCESS_GOALS for current theater/quarter."""
-    rows = run_query(f"""
-        SELECT GOAL
-        FROM {CONFIG["tb_goals_table"]}
-        WHERE THEATER = '{_theater()}'
-          AND GOAL_TYPE = 'TB Ingested'
-          AND TAG_VALUE = 'Make Your Data AI Ready'
-          AND FISCAL_QUARTER = '{CONFIG["fiscal_quarter"]}'
-    """)
-    return float(rows[0]["GOAL"]) if rows and rows[0]["GOAL"] else None
-
-
-def _play_use_cases_query(play_name, filter_clause):
+def _play_use_cases_query(play_name, extra_join, filter_clause):
+    excluded = ", ".join(f"'{s}'" for s in CONFIG["excluded_stages"])
     return run_query(f"""
-        SELECT {_dim_use_case_select_cols()}
-        FROM {CONFIG["dim_uc_direct_table"]} u
-        WHERE u.THEATER_NAME = '{_theater()}'
-          AND u.USE_CASE_EACV >= {CONFIG["play_threshold"]}
-          AND u.USE_CASE_STATUS IN ('In Pursuit', 'Implementation')
-          AND {filter_clause}
-        ORDER BY u.USE_CASE_EACV DESC
+        SELECT {_use_case_select_cols()}
+        FROM {CONFIG["raven_uc_table"]} u
+        JOIN {CONFIG["raven_acct_table"]} a ON u.VH_ACCOUNT_C = a.SALESFORCE_ACCOUNT_ID
+        {extra_join}
+        WHERE a.GVP = '{CONFIG["gvp_name"]}'
+          AND u.USE_CASE_ACV >= {CONFIG["play_threshold"]}
+          AND u.IS_WENT_LIVE = FALSE AND u.IS_LOST = FALSE
+          AND u.GO_LIVE_DATE BETWEEN '{CONFIG["quarter_start"]}' AND '{CONFIG["quarter_end"]}'
+          AND u.USE_CASE_STAGE NOT IN ({excluded}) AND {filter_clause}
+        ORDER BY u.USE_CASE_ACV DESC
     """)
 
 
 def q_play_use_cases():
+    dim_join = f"JOIN {CONFIG['dim_uc_table']} d ON u.ID = d.USE_CASE_ID"
     return {
-        "bronze": _play_use_cases_query("Bronze", f"u.PRIORITIZED_FEATURES ILIKE '{CONFIG['bronze_feature']}'"),
-        "si": _play_use_cases_query("SI", f"u.TECHNICAL_USE_CASE ILIKE '{CONFIG['si_technical_uc']}'"),
-        "sqlserver": _play_use_cases_query("SQL Server", f"u.PRIORITIZED_FEATURES ILIKE '{CONFIG['sqlserver_feature']}'"),
+        "bronze": _play_use_cases_query("Bronze", "", f"u.TECHNICAL_CAMPAIGN_S_C ILIKE '{CONFIG['bronze_campaign']}'"),
+        "si": _play_use_cases_query("SI", dim_join, f"d.TECHNICAL_USE_CASE ILIKE '{CONFIG['si_technical_use_case']}'"),
+        "sqlserver": _play_use_cases_query("SQL Server", "", f"u.TECHNICAL_CAMPAIGN_S_C ILIKE '{CONFIG['sqlserver_campaign']}'"),
     }
 
 
@@ -899,65 +874,74 @@ def q_bronze_tb_by_account():
     rows = run_query(f"""
         SELECT SALESFORCE_ACCOUNT_ID as ACCOUNT_ID, SALESFORCE_ACCOUNT_NAME as ACCOUNT_NAME,
                ROUND(SUM(TB_INGESTED), 1) as TB_INGESTED
-        FROM {CONFIG["tb_ingest_table"]}
-        WHERE GEO_NAME = '{_theater()}'
-          AND IS_BRONZE = true
+        FROM SALES.REPORTING.SALES_PROGRAMS_BRONZE_INGEST
+        WHERE GVP = '{CONFIG["gvp_name"]}'
         GROUP BY SALESFORCE_ACCOUNT_ID, SALESFORCE_ACCOUNT_NAME
     """)
     return {r["ACCOUNT_ID"]: r for r in rows}
 
 
-def _play_risk_detail_query(play_name, filter_clause):
+def _play_risk_detail_query(play_name, extra_join, filter_clause):
+    excluded = ", ".join(f"'{s}'" for s in CONFIG["excluded_stages"])
     risk_rows = run_query(f"""
-        SELECT u.ACCOUNT_NAME, u.USE_CASE_NAME,
-               u.USE_CASE_EACV, u.USE_CASE_RISK,
-               u.SE_COMMENTS, u.NEXT_STEPS, u.USE_CASE_STAGE
-        FROM {CONFIG["dim_uc_direct_table"]} u
-        WHERE u.THEATER_NAME = '{_theater()}'
-          AND u.USE_CASE_EACV > 0
-          AND u.USE_CASE_STATUS IN ('In Pursuit', 'Implementation')
-          AND u.USE_CASE_RISK IS NOT NULL AND u.USE_CASE_RISK != '' AND u.USE_CASE_RISK != 'None'
+        SELECT a.SALESFORCE_ACCOUNT_NAME as ACCOUNT_NAME, u.VH_NAME_C as USE_CASE_NAME,
+               u.USE_CASE_ACV as USE_CASE_EACV, u.USE_CASE_RISK_C as USE_CASE_RISK,
+               u.USE_CASE_COMMENTS_C as SE_COMMENTS, u.NEXT_STEP_C as NEXT_STEPS, u.USE_CASE_STAGE
+        FROM {CONFIG["raven_uc_table"]} u
+        JOIN {CONFIG["raven_acct_table"]} a ON u.VH_ACCOUNT_C = a.SALESFORCE_ACCOUNT_ID
+        {extra_join}
+        WHERE a.GVP = '{CONFIG["gvp_name"]}'
+          AND u.USE_CASE_ACV > 0 AND u.IS_WENT_LIVE = FALSE AND u.IS_LOST = FALSE
+          AND u.GO_LIVE_DATE BETWEEN '{CONFIG["quarter_start"]}' AND '{CONFIG["quarter_end"]}'
+          AND u.USE_CASE_STAGE NOT IN ({excluded})
+          AND u.USE_CASE_RISK_C IS NOT NULL AND u.USE_CASE_RISK_C != '' AND u.USE_CASE_RISK_C != 'None'
           AND {filter_clause}
-        ORDER BY u.USE_CASE_EACV DESC
+        ORDER BY u.USE_CASE_ACV DESC
     """)
     total_rows = run_query(f"""
         SELECT COUNT(*) as TOTAL_COUNT
-        FROM {CONFIG["dim_uc_direct_table"]} u
-        WHERE u.THEATER_NAME = '{_theater()}'
-          AND u.USE_CASE_EACV > 0
-          AND u.USE_CASE_STATUS IN ('In Pursuit', 'Implementation')
-          AND {filter_clause}
+        FROM {CONFIG["raven_uc_table"]} u
+        JOIN {CONFIG["raven_acct_table"]} a ON u.VH_ACCOUNT_C = a.SALESFORCE_ACCOUNT_ID
+        {extra_join}
+        WHERE a.GVP = '{CONFIG["gvp_name"]}'
+          AND u.USE_CASE_ACV > 0 AND u.IS_WENT_LIVE = FALSE AND u.IS_LOST = FALSE
+          AND u.GO_LIVE_DATE BETWEEN '{CONFIG["quarter_start"]}' AND '{CONFIG["quarter_end"]}'
+          AND u.USE_CASE_STAGE NOT IN ({excluded}) AND {filter_clause}
     """)
     total = safe_int(total_rows[0]["TOTAL_COUNT"])
     return {"risk_rows": risk_rows, "total_count": total}
 
 
 def q_high_risk_use_cases():
+    excluded = ", ".join(f"'{s}'" for s in CONFIG["excluded_stages"])
     return run_query(f"""
-        SELECT u.USE_CASE_ID, u.USE_CASE_NUMBER, u.USE_CASE_NAME,
-               u.ACCOUNT_OWNER_NAME as AE_NAME, u.USE_CASE_LEAD_SE_NAME as SE_NAME,
-               u.USE_CASE_EACV as USE_CASE_ACV, u.USE_CASE_RISK as RISK_TYPE,
+        SELECT u.ID as USE_CASE_ID, u.NAME as USE_CASE_NUMBER, u.VH_NAME_C as USE_CASE_NAME,
+               a.SALESFORCE_OWNER_NAME as AE_NAME, a.LEAD_SALES_ENGINEER_NAME as SE_NAME,
+               u.USE_CASE_ACV, u.USE_CASE_RISK_C as RISK_TYPE,
                SNOWFLAKE.CORTEX.COMPLETE('llama3.1-70b',
                    CONCAT('Summarize this use case risk in 1-2 concise sentences for a sales leadership QC call. Focus on what the risk is and the current mitigation plan. Do not include any preamble or introductory text, just provide the summary directly. Risk type: ',
-                       COALESCE(u.USE_CASE_RISK, 'Unknown'),
-                       '. SE Comments: ', COALESCE(u.SE_COMMENTS, 'None'),
-                       '. Next Steps: ', COALESCE(u.NEXT_STEPS, 'None'))
+                       COALESCE(u.USE_CASE_RISK_C, 'Unknown'),
+                       '. SE Comments: ', COALESCE(u.USE_CASE_COMMENTS_C, 'None'),
+                       '. Next Steps: ', COALESCE(u.NEXT_STEP_C, 'None'))
                ) as RISK_SUMMARY
-        FROM {CONFIG["dim_uc_direct_table"]} u
-        WHERE u.THEATER_NAME = '{_theater()}'
-          AND u.USE_CASE_EACV > 0
-          AND u.USE_CASE_STATUS IN ('In Pursuit', 'Implementation')
-          AND u.USE_CASE_RISK IS NOT NULL AND u.USE_CASE_RISK != '' AND u.USE_CASE_RISK != 'None'
-          AND u.USE_CASE_EACV >= {CONFIG["play_threshold"]}
-        ORDER BY u.USE_CASE_EACV DESC
+        FROM {CONFIG["raven_uc_table"]} u
+        JOIN {CONFIG["raven_acct_table"]} a ON u.VH_ACCOUNT_C = a.SALESFORCE_ACCOUNT_ID
+        WHERE a.GVP = '{CONFIG["gvp_name"]}'
+          AND u.USE_CASE_ACV > 0 AND u.IS_WENT_LIVE = FALSE AND u.IS_LOST = FALSE
+          AND u.GO_LIVE_DATE BETWEEN '{CONFIG["quarter_start"]}' AND '{CONFIG["quarter_end"]}'
+          AND u.USE_CASE_STAGE NOT IN ({excluded})
+          AND u.USE_CASE_RISK_C IS NOT NULL AND u.USE_CASE_RISK_C != '' AND u.USE_CASE_RISK_C != 'None'
+          AND u.USE_CASE_ACV >= {CONFIG["play_threshold"]}
+        ORDER BY u.USE_CASE_ACV DESC
     """)
 
 
 def q_play_risk_detail():
+    dim_join = f"JOIN {CONFIG['dim_uc_table']} d ON u.ID = d.USE_CASE_ID"
     return {
-        "bronze": _play_risk_detail_query("Bronze", f"u.PRIORITIZED_FEATURES ILIKE '{CONFIG['bronze_feature']}'"),
-        "si": _play_risk_detail_query("SI", f"u.TECHNICAL_USE_CASE ILIKE '{CONFIG['si_technical_uc']}'"),
-        "sqlserver": _play_risk_detail_query("SQL Server", f"u.PRIORITIZED_FEATURES ILIKE '{CONFIG['sqlserver_feature']}'"),
+        "bronze": _play_risk_detail_query("Bronze", "", f"u.TECHNICAL_CAMPAIGN_S_C ILIKE '{CONFIG['bronze_campaign']}'"),
+        "si": _play_risk_detail_query("SI", dim_join, f"d.TECHNICAL_USE_CASE ILIKE '{CONFIG['si_technical_use_case']}'"),
+        "sqlserver": _play_risk_detail_query("SQL Server", "", f"u.TECHNICAL_CAMPAIGN_S_C ILIKE '{CONFIG['sqlserver_campaign']}'"),
     }
 
 
@@ -1124,9 +1108,10 @@ def q_use_case_velocity():
 def q_bronze_created_qtd():
     created_rows = run_query(f"""
         SELECT COUNT(*) as CREATED_COUNT
-        FROM {CONFIG["dim_uc_direct_table"]} u
-        WHERE u.THEATER_NAME = '{_theater()}'
-          AND u.PRIORITIZED_FEATURES ILIKE '{CONFIG["bronze_feature"]}'
+        FROM {CONFIG["raven_uc_table"]} u
+        JOIN {CONFIG["raven_acct_table"]} a ON u.VH_ACCOUNT_C = a.SALESFORCE_ACCOUNT_ID
+        WHERE a.GVP = '{CONFIG["gvp_name"]}'
+          AND u.TECHNICAL_CAMPAIGN_S_C ILIKE '{CONFIG["bronze_campaign"]}'
           AND u.CREATED_DATE BETWEEN '{CONFIG["quarter_start"]}' AND '{CONFIG["quarter_end"]}'
     """)
     created = safe_int(created_rows[0]["CREATED_COUNT"]) if created_rows else 0
@@ -1141,12 +1126,14 @@ def q_bronze_created_qtd():
 
 
 def q_si_created_qtd():
-    """Count SI use cases created QTD using DIM_USE_CASE TECHNICAL_USE_CASE filter."""
+    """Count SI use cases created QTD using TECHNICAL_CAMPAIGN_S_C (same methodology as bronze)."""
     created_rows = run_query(f"""
         SELECT COUNT(*) as CREATED_COUNT
-        FROM {CONFIG["dim_uc_direct_table"]} u
-        WHERE u.THEATER_NAME = '{_theater()}'
-          AND u.TECHNICAL_USE_CASE ILIKE '{CONFIG["si_technical_uc"]}'
+        FROM {CONFIG["raven_uc_table"]} u
+        JOIN {CONFIG["raven_acct_table"]} a ON u.VH_ACCOUNT_C = a.SALESFORCE_ACCOUNT_ID
+        WHERE a.GVP = '{CONFIG["gvp_name"]}'
+          AND (u.TECHNICAL_CAMPAIGN_S_C ILIKE '{CONFIG["si_campaign_analyst"]}'
+               OR u.TECHNICAL_CAMPAIGN_S_C ILIKE '{CONFIG["si_campaign_search"]}')
           AND u.CREATED_DATE BETWEEN '{CONFIG["quarter_start"]}' AND '{CONFIG["quarter_end"]}'
     """)
     return safe_int(created_rows[0]["CREATED_COUNT"]) if created_rows else 0
@@ -2210,7 +2197,6 @@ def _run_all_queries(gvp_name):
         "play_summary": q_sales_play_summary,
         "play_detail": q_play_detail_metrics,
         "bronze_tb_total": q_bronze_tb_total,
-        "bronze_tb_target": q_bronze_tb_target,
         "play_use_cases": q_play_use_cases,
         "play_risk": q_play_risk_detail,
         "high_risk_ucs": q_high_risk_use_cases,
@@ -2262,7 +2248,6 @@ def _run_all_queries(gvp_name):
     play_summary = p1_results["play_summary"]
     play_detail = p1_results["play_detail"]
     bronze_tb_total = p1_results["bronze_tb_total"]
-    bronze_tb_target_val = p1_results["bronze_tb_target"]
     play_use_cases = p1_results["play_use_cases"]
     play_risk = p1_results["play_risk"]
     high_risk_ucs = p1_results["high_risk_ucs"]
@@ -2338,7 +2323,7 @@ def _run_all_queries(gvp_name):
         "play_summary": play_summary, "play_detail": play_detail,
         "play_use_cases": play_use_cases, "play_risk": play_risk,
         "high_risk_ucs": high_risk_ucs, "consumption": consumption,
-        "bronze_tb_total": bronze_tb_total, "bronze_tb_target": bronze_tb_target_val, "bronze_tb_acct": bronze_tb_acct,
+        "bronze_tb_total": bronze_tb_total, "bronze_tb_acct": bronze_tb_acct,
         "si_usage": si_usage, "si_theater": si_theater, "pacing": pacing,
         "forecast_analysis": forecast_analysis, "play_targets": play_targets,
         "partner_sd": partner_sd, "uc_velocity": uc_velocity,
@@ -2753,9 +2738,9 @@ def render_golives_tab(data):
 
     # Row 2: Bronze - DCT TBs Ingested
     br_tb_actual = bronze_tb_total
-    br_tb_target = data.get("bronze_tb_target")
-    br_tb_target_str = f"{br_tb_target:,.0f} TB" if br_tb_target is not None else "&mdash;"
-    br_tb_att = _sp_attainment(br_tb_actual, br_tb_target)
+    br_tb_target = None  # Not available in Snowflake
+    br_tb_target_str = "&mdash;"
+    br_tb_att = "&mdash;"
 
     # Row 3: SI - Use Cases Created
     si_created_actual = si_created
@@ -2937,7 +2922,7 @@ st.set_page_config(
 # =============================================================================
 # ACCESS CONTROL — restrict to approved users
 # =============================================================================
-ALLOWED_USERS = {"NATHOMAS", "SVANDAAL", "MMEREDITH", "NTSUI", "ADANNA"}
+ALLOWED_USERS = {"NATHOMAS", "SVANDAAL", "MMEREDITH", "NTSUI"}
 
 def _check_access():
     """Verify the current user is in the approved access list."""
@@ -2946,7 +2931,6 @@ def _check_access():
         "saskia.vandaal@snowflake.com",
         "matt.meredith@snowflake.com",
         "nick.tsui@snowflake.com",
-        "alex.danna@snowflake.com",
     }
     try:
         user_email = st.user.get("email", "").lower()
