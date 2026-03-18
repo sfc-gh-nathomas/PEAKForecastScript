@@ -729,9 +729,24 @@ def q_bronze_tb_total():
         SELECT SUM(TB_INGESTED) as BRONZE_TB
         FROM SALES.REPORTING.SALES_PROGRAMS_BRONZE_INGEST
         WHERE GVP = '{CONFIG["gvp_name"]}'
+          AND IS_BRONZE = TRUE
           AND MONTH BETWEEN '{CONFIG["quarter_start"]}' AND '{CONFIG["quarter_end"]}'
     """)
     return float(rows[0]["BRONZE_TB"] or 0)
+
+
+def q_tb_ingested_target():
+    rows = run_query(f"""
+        SELECT GOAL
+        FROM SALES.SALES_BI.SALES_PROGRAMS_SUCCESS_GOALS
+        WHERE GOAL_TYPE = 'TB Ingested'
+          AND TAG_VALUE = 'Make Your Data AI Ready'
+          AND THEATER = '{_theater()}'
+          AND FISCAL_QUARTER = '{CONFIG["fiscal_quarter"]}'
+    """)
+    if rows and rows[0]["GOAL"] is not None:
+        return float(rows[0]["GOAL"])
+    return None
 
 
 def _play_use_cases_query(play_name, extra_join, filter_clause):
@@ -2271,6 +2286,7 @@ def _run_all_queries(gvp_name, selected_quarter):
         "play_summary": q_sales_play_summary,
         "play_detail": q_play_detail_metrics,
         "bronze_tb_total": q_bronze_tb_total,
+        "tb_ingested_target": q_tb_ingested_target,
         "play_use_cases": q_play_use_cases,
         "play_risk": q_play_risk_detail,
         "high_risk_ucs": q_high_risk_use_cases,
@@ -2322,6 +2338,7 @@ def _run_all_queries(gvp_name, selected_quarter):
     play_summary = p1_results["play_summary"]
     play_detail = p1_results["play_detail"]
     bronze_tb_total = p1_results["bronze_tb_total"]
+    tb_ingested_target = p1_results["tb_ingested_target"]
     play_use_cases = p1_results["play_use_cases"]
     play_risk = p1_results["play_risk"]
     high_risk_ucs = p1_results["high_risk_ucs"]
@@ -2398,6 +2415,7 @@ def _run_all_queries(gvp_name, selected_quarter):
         "play_use_cases": play_use_cases, "play_risk": play_risk,
         "high_risk_ucs": high_risk_ucs, "consumption": consumption,
         "bronze_tb_total": bronze_tb_total, "bronze_tb_acct": bronze_tb_acct,
+        "tb_ingested_target": tb_ingested_target,
         "si_usage": si_usage, "si_theater": si_theater, "pacing": pacing,
         "forecast_analysis": forecast_analysis, "play_targets": play_targets,
         "partner_sd": partner_sd, "uc_velocity": uc_velocity,
@@ -2810,9 +2828,9 @@ def render_golives_tab(data):
 
     # Row 2: Bronze - DCT TBs Ingested
     br_tb_actual = bronze_tb_total
-    br_tb_target = None  # Not available in Snowflake
-    br_tb_target_str = "&mdash;"
-    br_tb_att = "&mdash;"
+    br_tb_target = data.get("tb_ingested_target")
+    br_tb_target_str = f"{br_tb_target:,.0f} TB" if br_tb_target is not None else "&mdash;"
+    br_tb_att = _sp_attainment(br_tb_actual, br_tb_target)
 
     # Row 3: SI - Use Cases Created
     si_created_actual = si_created
