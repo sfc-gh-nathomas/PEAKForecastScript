@@ -543,6 +543,239 @@ def q_theater_consumption():
     }
 
 
+
+def q_wins_qtd():
+    """QTD wins ACV and count from MDM cache (IS_WON + DECISION_DATE = matches MaxIQ)."""
+    qs, qe = CONFIG["quarter_start"], CONFIG["quarter_end"]
+    rows = run_query(f"""
+        SELECT SUM(USE_CASE_EACV) as WINS_ACV, COUNT(*) as WINS_COUNT
+        FROM SNOWPUBLIC.STREAMLIT.DIM_USE_CASE_MDM_CACHE
+        WHERE {_gvp_filter()}
+          AND USE_CASE_EACV > 0 AND IS_WON = TRUE
+          AND DECISION_DATE BETWEEN '{qs}' AND '{qe}'
+    """)
+    r = rows[0] if rows else {}
+    return {"acv": safe_float(r.get("WINS_ACV") or 0), "count": safe_int(r.get("WINS_COUNT") or 0)}
+
+
+def q_last7_wins():
+    """Wins in the last 7 days."""
+    ref_date = CONFIG["reference_date"]
+    rows = run_query(f"""
+        SELECT SUM(USE_CASE_EACV) as WINS_ACV, COUNT(*) as WINS_COUNT
+        FROM SNOWPUBLIC.STREAMLIT.DIM_USE_CASE_MDM_CACHE
+        WHERE {_gvp_filter()}
+          AND USE_CASE_EACV > 0 AND IS_WON = TRUE
+          AND DECISION_DATE >= DATEADD('day', -7, {ref_date})
+          AND DECISION_DATE <= {ref_date}
+    """)
+    r = rows[0] if rows else {}
+    return {"acv": safe_float(r.get("WINS_ACV") or 0), "count": safe_int(r.get("WINS_COUNT") or 0)}
+
+
+def q_wins_forecast_calls():
+    """Commit/ML/BestCase/Won/Open from pipeline targets + GVP target for wins."""
+    fq_key = CONFIG["fiscal_quarter_key"]
+    gvp = CONFIG["gvp_name"]
+    function = CONFIG["gvp_function"]
+    rows = run_query(f"""
+        SELECT FORECAST_TYPE, FORECAST_AMOUNT, LATEST_DATE, PREVIOUS_WEEK
+        FROM SALES.REPORTING.PEAK_FORECAST_CALLS_PIPELINE_TARGETS
+        WHERE USER_NAME = '{gvp}'
+          AND FUNCTION = '{function}'
+          AND TYPE = 'Use Case Wins'
+          AND FORECAST_TYPE IN ('CommitForecast', 'MostLikelyForecast', 'BestCaseForecast', 'Won', 'Open', 'Mature')
+          AND FISCAL_QUARTER = '{fq_key}'
+          AND (LATEST_DATE = TRUE OR PREVIOUS_WEEK = TRUE)
+    """)
+    latest = {r["FORECAST_TYPE"]: safe_float(r["FORECAST_AMOUNT"]) for r in rows if r["LATEST_DATE"]}
+    prior  = {r["FORECAST_TYPE"]: safe_float(r["FORECAST_AMOUNT"]) for r in rows if r["PREVIOUS_WEEK"]}
+    def _delta(key):
+        cur = latest.get(key); prv = prior.get(key)
+        return (cur - prv) if (cur is not None and prv is not None) else None
+    # Fetch wins target from GVP target cache
+    target_rows = run_query(f"""
+        SELECT TARGET_VALUE FROM SNOWPUBLIC.STREAMLIT.GVP_TARGET_CACHE
+        WHERE OWNER_NAME = '{gvp}' AND TARGET_LEVEL = 'GVP'
+          AND FISCAL_QUARTER = '{fq_key}' AND TARGET_TYPE = 'Use Case Won'
+    """)
+    wins_target = safe_float(target_rows[0]["TARGET_VALUE"]) if target_rows else 0
+    return {
+        "commit": latest.get("CommitForecast", 0),
+        "most_likely": latest.get("MostLikelyForecast", 0),
+        "stretch": latest.get("BestCaseForecast", 0),
+        "won_actual": latest.get("Won", 0),
+        "open_pipeline": latest.get("Open", 0),
+        "mature": latest.get("Mature", 0),
+        "target": wins_target,
+        "commit_delta": _delta("CommitForecast"),
+        "ml_delta": _delta("MostLikelyForecast"),
+        "stretch_delta": _delta("BestCaseForecast"),
+    }
+
+
+def q_wins_open_pipeline():
+    """Open pipeline for wins — not yet won, not lost, GO_LIVE_DATE in quarter."""
+    qs, qe = CONFIG["quarter_start"], CONFIG["quarter_end"]
+    rows = run_query(f"""
+        SELECT SUM(USE_CASE_EACV) as OPEN_ACV, COUNT(*) as OPEN_COUNT
+        FROM SNOWPUBLIC.STREAMLIT.DIM_USE_CASE_MDM_CACHE
+        WHERE {_gvp_filter()}
+          AND USE_CASE_EACV > 0
+          AND IS_WON = FALSE
+          AND COALESCE(IS_LOST, FALSE) = FALSE
+          AND GO_LIVE_DATE BETWEEN '{qs}' AND '{qe}'
+    """)
+    r = rows[0] if rows else {}
+    return {"acv": safe_float(r.get("OPEN_ACV") or 0), "count": safe_int(r.get("OPEN_COUNT") or 0)}
+
+
+def q_wins_top5():
+    """Top 5 open-pipeline UCs by ACV for the wins tab."""
+    qs, qe = CONFIG["quarter_start"], CONFIG["quarter_end"]
+    rows = run_query(f"""
+        SELECT u.USE_CASE_ID, u.USE_CASE_NAME, u.USE_CASE_EACV, u.USE_CASE_STAGE,
+               u.STAGE_NUMBER, u.DAYS_IN_STAGE, u.ACCOUNT_NAME, u.ACCOUNT_ID,
+               u.REGION_NAME, u.USE_CASE_DESCRIPTION, u.IS_PARTNER_ATTACHED,
+               u.TECHNICAL_WIN_DATE, u.GO_LIVE_DATE, u.USE_CASE_RISK,
+               u.SPECIALIST_COMMENTS, u.IS_TECH_WON
+        FROM SNOWPUBLIC.STREAMLIT.DIM_USE_CASE_MDM_CACHE u
+        WHERE {_gvp_filter('u')}
+          AND u.USE_CASE_EACV > 0
+          AND u.IS_WON = FALSE
+          AND COALESCE(u.IS_LOST, FALSE) = FALSE
+          AND u.GO_LIVE_DATE BETWEEN '{qs}' AND '{qe}'
+        ORDER BY u.USE_CASE_EACV DESC
+        LIMIT 10
+    """)
+    return rows
+
+
+def q_wins_risk_analysis():
+    """Fetch open wins pipeline UCs with risk data for deep analysis."""
+    gvp = CONFIG["gvp_name"]
+    rows = run_query(f"""
+        SELECT USE_CASE_EACV, ACCOUNT_NAME, USE_CASE_NAME, USE_CASE_RISK,
+               RISK_DESCRIPTION, SPECIALIST_COMMENTS, STAGE_NUMBER, USE_CASE_STAGE
+        FROM SNOWPUBLIC.STREAMLIT.DIM_USE_CASE_MDM_CACHE
+        WHERE ACCOUNT_GVP = '{gvp}'
+          AND USE_CASE_EACV > 0
+          AND IS_WON = FALSE
+          AND COALESCE(IS_LOST, FALSE) = FALSE
+          AND (
+              (USE_CASE_RISK IS NOT NULL AND UPPER(USE_CASE_RISK) != 'NONE')
+              OR RISK_DESCRIPTION IS NOT NULL
+              OR SPECIALIST_COMMENTS IS NOT NULL
+          )
+        ORDER BY USE_CASE_EACV DESC
+        LIMIT 150
+    """)
+    return rows
+
+
+def q_wins_pipeline_movements():
+    """7-day wins pipeline movements: pushed out, pulled in, tech wins, new pipeline."""
+    qs, qe = CONFIG["quarter_start"], CONFIG["quarter_end"]
+    ref_date = CONFIG["reference_date"]
+    snap = "SNOWPUBLIC.STREAMLIT.DIM_USE_CASE_HISTORY_DS_VW"
+    try:
+        rows = run_query(f"""
+            WITH latest AS (
+                SELECT USE_CASE_ID, GO_LIVE_DATE, IS_TECH_WON, USE_CASE_EACV, CREATED_DATE
+                FROM {snap}
+                WHERE DS = (SELECT MAX(DS) FROM {snap})
+                  AND {_gvp_filter()} AND USE_CASE_EACV > 0
+            ),
+            prior AS (
+                SELECT USE_CASE_ID, GO_LIVE_DATE, IS_TECH_WON
+                FROM {snap}
+                WHERE DS = (SELECT MAX(DS) FROM {snap} WHERE DS <= DATEADD('day', -7, {ref_date}))
+                  AND {_gvp_filter()} AND USE_CASE_EACV > 0
+            )
+            SELECT
+                SUM(CASE WHEN p.GO_LIVE_DATE BETWEEN '{qs}' AND '{qe}'
+                         AND COALESCE(p.IS_TECH_WON, FALSE) = FALSE
+                         AND l.USE_CASE_ID IS NOT NULL
+                         AND (l.GO_LIVE_DATE > '{qe}' OR l.GO_LIVE_DATE < '{qs}')
+                    THEN 1 ELSE 0 END) as PUSHED_OUT_COUNT,
+                SUM(CASE WHEN p.GO_LIVE_DATE BETWEEN '{qs}' AND '{qe}'
+                         AND COALESCE(p.IS_TECH_WON, FALSE) = FALSE
+                         AND l.USE_CASE_ID IS NOT NULL
+                         AND (l.GO_LIVE_DATE > '{qe}' OR l.GO_LIVE_DATE < '{qs}')
+                    THEN l.USE_CASE_EACV ELSE 0 END) as PUSHED_OUT_ACV,
+                SUM(CASE WHEN (p.USE_CASE_ID IS NULL OR p.GO_LIVE_DATE NOT BETWEEN '{qs}' AND '{qe}')
+                         AND l.GO_LIVE_DATE BETWEEN '{qs}' AND '{qe}'
+                         AND COALESCE(l.IS_TECH_WON, FALSE) = FALSE
+                    THEN 1 ELSE 0 END) as PULLED_IN_COUNT,
+                SUM(CASE WHEN (p.USE_CASE_ID IS NULL OR p.GO_LIVE_DATE NOT BETWEEN '{qs}' AND '{qe}')
+                         AND l.GO_LIVE_DATE BETWEEN '{qs}' AND '{qe}'
+                         AND COALESCE(l.IS_TECH_WON, FALSE) = FALSE
+                    THEN l.USE_CASE_EACV ELSE 0 END) as PULLED_IN_ACV,
+                SUM(CASE WHEN l.CREATED_DATE >= DATEADD('day', -7, {ref_date})
+                         AND l.GO_LIVE_DATE BETWEEN '{qs}' AND '{qe}'
+                         AND COALESCE(l.IS_TECH_WON, FALSE) = FALSE
+                    THEN 1 ELSE 0 END) as NEW_PIPELINE_COUNT,
+                SUM(CASE WHEN l.CREATED_DATE >= DATEADD('day', -7, {ref_date})
+                         AND l.GO_LIVE_DATE BETWEEN '{qs}' AND '{qe}'
+                         AND COALESCE(l.IS_TECH_WON, FALSE) = FALSE
+                    THEN l.USE_CASE_EACV ELSE 0 END) as NEW_PIPELINE_ACV
+            FROM latest l
+            FULL OUTER JOIN prior p ON l.USE_CASE_ID = p.USE_CASE_ID
+        """)
+        r = rows[0] if rows else {}
+        _e = {"count": 0, "acv": 0}
+        return {
+            "pushed_out":   {"count": safe_int(r.get("PUSHED_OUT_COUNT") or 0),   "acv": safe_float(r.get("PUSHED_OUT_ACV") or 0)},
+            "pulled_in":    {"count": safe_int(r.get("PULLED_IN_COUNT") or 0),     "acv": safe_float(r.get("PULLED_IN_ACV") or 0)},
+            "new_pipeline": {"count": safe_int(r.get("NEW_PIPELINE_COUNT") or 0),  "acv": safe_float(r.get("NEW_PIPELINE_ACV") or 0)},
+        }
+    except Exception:
+        _e = {"count": 0, "acv": 0}
+        return {"pushed_out": _e, "pulled_in": _e, "new_pipeline": _e}
+
+
+def q_wins_pacing(day_number, week_number):
+    """Prior FY win pacing using TECHNICAL_WIN_DATE, analogous to q_prior_fy_pacing."""
+    day_num = safe_int(day_number)
+    week_days = safe_int(week_number) * 7
+    quarters = CONFIG.get("prior_fy_quarters", [])
+    if not quarters:
+        return {"day_avg": 0, "day_pct": 0, "week_avg": 0, "week_pct": 0, "prior_fy_final": 0}
+    day_unions, week_unions, final_unions = [], [], []
+    for qstart, qend in quarters:
+        day_unions.append(f"""
+            SELECT COALESCE(SUM(USE_CASE_EACV), 0) as WINS_ACV
+            FROM SNOWPUBLIC.STREAMLIT.DIM_USE_CASE_MDM_CACHE
+            WHERE {_gvp_filter()}
+              AND USE_CASE_EACV > 0 AND IS_TECH_WON = TRUE
+              AND TECHNICAL_WIN_DATE BETWEEN '{qstart}' AND DATEADD('day', {day_num}-1, '{qstart}')
+        """)
+        week_unions.append(f"""
+            SELECT COALESCE(SUM(USE_CASE_EACV), 0) as WINS_ACV
+            FROM SNOWPUBLIC.STREAMLIT.DIM_USE_CASE_MDM_CACHE
+            WHERE {_gvp_filter()}
+              AND USE_CASE_EACV > 0 AND IS_TECH_WON = TRUE
+              AND TECHNICAL_WIN_DATE BETWEEN '{qstart}' AND DATEADD('day', {week_days}-1, '{qstart}')
+        """)
+        final_unions.append(f"""
+            SELECT COALESCE(SUM(USE_CASE_EACV), 0) as WINS_ACV
+            FROM SNOWPUBLIC.STREAMLIT.DIM_USE_CASE_MDM_CACHE
+            WHERE {_gvp_filter()}
+              AND USE_CASE_EACV > 0 AND IS_TECH_WON = TRUE
+              AND TECHNICAL_WIN_DATE BETWEEN '{qstart}' AND '{qend}'
+        """)
+    day_avg = float(run_query(f"SELECT AVG(WINS_ACV) as AVG FROM ({' UNION ALL '.join(day_unions)})")[0]["AVG"] or 0)
+    week_avg = float(run_query(f"SELECT AVG(WINS_ACV) as AVG FROM ({' UNION ALL '.join(week_unions)})")[0]["AVG"] or 0)
+    fy_final = float(run_query(f"SELECT AVG(WINS_ACV) as AVG FROM ({' UNION ALL '.join(final_unions)})")[0]["AVG"] or 0)
+    return {
+        "day_avg": day_avg,
+        "day_pct": (day_avg / fy_final * 100) if fy_final else 0,
+        "week_avg": week_avg,
+        "week_pct": (week_avg / fy_final * 100) if fy_final else 0,
+        "prior_fy_final": fy_final,
+    }
+
+
 def q_forecast_calls():
     fq_key = CONFIG["fiscal_quarter_key"]
     rows = run_query(f"""
@@ -1344,6 +1577,34 @@ def q_current_pipeline_phases():
     return {r["PIPELINE_PHASE"]: r for r in rows}
 
 
+def q_wins_pipeline_phases():
+    """Current pipeline state for wins: Won QTD, Stage 4 (TW), Pre-TW (Stages 1-3)."""
+    qs, qe = CONFIG["quarter_start"], CONFIG["quarter_end"]
+    ref_date = CONFIG["reference_date"]
+    rows = run_query(f"""
+        SELECT
+            CASE
+                WHEN u.IS_WON = TRUE AND u.DECISION_DATE BETWEEN '{qs}' AND '{qe}'
+                    THEN 'Won QTD'
+                WHEN u.STAGE_NUMBER = 4
+                    AND u.IS_WON = FALSE AND COALESCE(u.IS_LOST, FALSE) = FALSE
+                    THEN 'Stage 4 (TW Pipeline)'
+                WHEN u.STAGE_NUMBER BETWEEN 1 AND 3
+                    AND u.IS_WON = FALSE AND COALESCE(u.IS_LOST, FALSE) = FALSE
+                    THEN 'Pre-TW (Stages 1-3)'
+                ELSE 'Other'
+            END as WIN_PHASE,
+            COUNT(*) as UC_COUNT,
+            ROUND(SUM(u.USE_CASE_EACV), 0) as TOTAL_ACV
+        FROM SNOWPUBLIC.STREAMLIT.DIM_USE_CASE_MDM_CACHE u
+        WHERE {_gvp_filter('u')}
+          AND u.USE_CASE_EACV > 0
+          AND u.GO_LIVE_DATE BETWEEN '{qs}' AND '{qe}'
+        GROUP BY WIN_PHASE ORDER BY WIN_PHASE
+    """)
+    return {r["WIN_PHASE"]: r for r in rows}
+
+
 def q_historical_conversion_rates(day_number):
     quarters = CONFIG["prior_fy_quarters"]
     if not quarters:
@@ -1445,6 +1706,95 @@ def q_historical_conversion_rates(day_number):
     return rows
 
 
+def q_wins_historical_conversion_rates(day_number):
+    """Historical win conversion rates by stage at day N of prior quarters."""
+    quarters = CONFIG.get("prior_fy_quarters", [])
+    if not quarters:
+        return []
+    day_num = safe_int(day_number)
+    snapshot_table = "SNOWPUBLIC.STREAMLIT.DIM_USE_CASE_HISTORY_DS_VW"
+    unions = []
+    for qs, qe in quarters:
+        q_label = _quarter_label(qs)
+        snap_date = f"DATEADD('day', {day_num - 1}, '{qs}')::DATE"
+        unions.append(f"""
+            SELECT '{q_label}' as QTR, '{qs}' as QS, '{qe}' as QE,
+                SUM(CASE WHEN h.IS_TECH_WON = TRUE
+                         AND h.TECHNICAL_WIN_DATE BETWEEN '{qs}' AND {snap_date}
+                    THEN h.USE_CASE_EACV ELSE 0 END) as WON_AT_SNAP,
+                SUM(CASE WHEN h.STAGE_NUMBER = 4
+                         AND COALESCE(h.IS_LOST, FALSE) = FALSE
+                         AND h.GO_LIVE_DATE BETWEEN '{qs}' AND '{qe}'
+                    THEN h.USE_CASE_EACV ELSE 0 END) as STAGE4_TOTAL,
+                SUM(CASE WHEN h.STAGE_NUMBER = 4
+                         AND COALESCE(h.IS_LOST, FALSE) = FALSE
+                         AND h.GO_LIVE_DATE BETWEEN '{qs}' AND '{qe}'
+                         AND o.IS_TECH_WON = TRUE
+                         AND o.TECHNICAL_WIN_DATE BETWEEN '{qs}' AND '{qe}'
+                    THEN h.USE_CASE_EACV ELSE 0 END) as STAGE4_CONVERTED,
+                SUM(CASE WHEN h.STAGE_NUMBER BETWEEN 1 AND 3
+                         AND COALESCE(h.IS_LOST, FALSE) = FALSE
+                         AND h.GO_LIVE_DATE BETWEEN '{qs}' AND '{qe}'
+                    THEN h.USE_CASE_EACV ELSE 0 END) as PRE_TW_TOTAL,
+                SUM(CASE WHEN h.STAGE_NUMBER BETWEEN 1 AND 3
+                         AND COALESCE(h.IS_LOST, FALSE) = FALSE
+                         AND h.GO_LIVE_DATE BETWEEN '{qs}' AND '{qe}'
+                         AND o.IS_TECH_WON = TRUE
+                         AND o.TECHNICAL_WIN_DATE BETWEEN '{qs}' AND '{qe}'
+                    THEN h.USE_CASE_EACV ELSE 0 END) as PRE_TW_CONVERTED,
+                0 as NEW_WINS_CONVERTED,
+                0 as FINAL_WINS
+            FROM {snapshot_table} h
+            LEFT JOIN id_map m ON h.USE_CASE_ID = m.USE_CASE_ID
+            LEFT JOIN SNOWPUBLIC.STREAMLIT.DIM_USE_CASE_MDM_CACHE o
+                ON m.RESOLVED_USE_CASE_ID = o.RESOLVED_USE_CASE_ID
+            WHERE h.DS = {snap_date}
+              AND {_gvp_filter('h')}
+              AND h.USE_CASE_EACV > 0
+        """)
+
+    # New wins + final wins per quarter (created after snap that won, and total)
+    nw_unions = []
+    for qs, qe in quarters:
+        q_label = _quarter_label(qs)
+        snap_date = f"DATEADD('day', {day_num - 1}, '{qs}')::DATE"
+        nw_unions.append(f"""
+            SELECT '{q_label}' as QTR,
+                COALESCE((SELECT SUM(o2.USE_CASE_EACV)
+                  FROM SNOWPUBLIC.STREAMLIT.DIM_USE_CASE_MDM_CACHE o2
+                  LEFT JOIN id_map m2 ON m2.RESOLVED_USE_CASE_ID = o2.RESOLVED_USE_CASE_ID
+                  LEFT JOIN {snapshot_table} h2 ON h2.USE_CASE_ID = m2.USE_CASE_ID AND h2.DS = {snap_date}
+                  WHERE {_gvp_filter('o2')} AND o2.USE_CASE_EACV > 0
+                    AND o2.IS_TECH_WON = TRUE
+                    AND o2.TECHNICAL_WIN_DATE BETWEEN '{qs}' AND '{qe}'
+                    AND (h2.USE_CASE_ID IS NULL OR h2.CREATED_DATE > {snap_date})
+                ), 0) as NEW_WINS_ACV,
+                COALESCE((SELECT SUM(u2.USE_CASE_EACV)
+                  FROM SNOWPUBLIC.STREAMLIT.DIM_USE_CASE_MDM_CACHE u2
+                  WHERE {_gvp_filter('u2')} AND u2.IS_TECH_WON = TRUE
+                    AND u2.TECHNICAL_WIN_DATE BETWEEN '{qs}' AND '{qe}' AND u2.USE_CASE_EACV > 0
+                ), 0) as FINAL_WINS
+        """)
+
+    id_map_cte = (
+        f"WITH id_map AS (SELECT DISTINCT USE_CASE_ID, RESOLVED_USE_CASE_ID "
+        f"FROM {snapshot_table} "
+        f"WHERE DS = (SELECT MAX(DS) FROM {snapshot_table}) "
+        f"AND RESOLVED_USE_CASE_ID IS NOT NULL) "
+    )
+    rows = run_query(id_map_cte + " UNION ALL ".join(unions) + " ORDER BY QTR")
+    if nw_unions:
+        nw_rows = run_query(id_map_cte + " UNION ALL ".join(nw_unions) + " ORDER BY QTR")
+        nw_map = {r["QTR"]: r for r in nw_rows}
+        for r in rows:
+            qd = nw_map.get(r["QTR"], {})
+            r["NEW_WINS_CONVERTED"] = safe_float(qd.get("NEW_WINS_ACV", 0) or 0)
+            r["FINAL_WINS"] = safe_float(qd.get("FINAL_WINS", 0) or 0)
+    rows = [r for r in rows if safe_float(r.get("STAGE4_TOTAL", 0) or 0) > 0
+            or safe_float(r.get("WON_AT_SNAP", 0) or 0) > 0]
+    return rows
+
+
 def compute_forecast_analysis(pipeline_phases, hist_rates, deployed, pipeline_risk, most_likely, pacing):
     deployed_acv = float((pipeline_phases.get("Already Deployed") or {}).get("TOTAL_ACV", 0) or 0)
     imp_acv = float((pipeline_phases.get("In Implementation") or {}).get("TOTAL_ACV", 0) or 0)
@@ -1497,6 +1847,12 @@ def compute_forecast_analysis(pipeline_phases, hist_rates, deployed, pipeline_ri
             if pt_t > 0: pre_tw_rates.append(pt_c / pt_t)
             if final > 0: new_pcts.append(new_c / final)
 
+        # Recency weighting: most recent quarter gets 2× weight (append last value again)
+        if imp_rates: imp_rates.append(imp_rates[-1])
+        if tw_rates: tw_rates.append(tw_rates[-1])
+        if pre_tw_rates: pre_tw_rates.append(pre_tw_rates[-1])
+        if new_pcts: new_pcts.append(new_pcts[-1])
+
         avg_imp_rate = sum(imp_rates) / len(imp_rates) if imp_rates else 0
         avg_tw_rate = sum(tw_rates) / len(tw_rates) if tw_rates else 0
         avg_pre_tw_rate = sum(pre_tw_rates) / len(pre_tw_rates) if pre_tw_rates else 0
@@ -1511,7 +1867,8 @@ def compute_forecast_analysis(pipeline_phases, hist_rates, deployed, pipeline_ri
         known_commit = deployed_acv + (imp_acv * min_imp) + (tw_acv * min_tw) + (pre_tw_acv * min_pre_tw)
         m3_most_likely = known_most_likely / (1 - avg_new_pct) if avg_new_pct < 1 else known_most_likely
         m3_commit = known_commit / (1 - min_new) if min_new < 1 else known_commit
-        m3_stretch = (deployed_acv + imp_acv + tw_acv + pre_tw_acv) / (1 - max_new) if max_new < 1 else (deployed_acv + imp_acv + tw_acv + pre_tw_acv)
+        # Stretch capped at total pipeline — historical max never exceeded starting pipeline
+        m3_stretch = deployed_acv + imp_acv + tw_acv + pre_tw_acv
     else:
         avg_imp_rate = avg_tw_rate = avg_pre_tw_rate = avg_new_pct = 0
         m3_commit = m3_most_likely = m3_stretch = 0
@@ -1552,17 +1909,21 @@ def _compute_backtest_weights(bt_data):
 
 
 def _apply_day_adjustment(weights, day_n):
-    """Adjust M2 weight based on how far into the quarter we are."""
+    """Adjust M2 weight based on how far into the quarter we are.
+    Pre-quarter (day_n <= 0): M2 = 0, redistribute to M1/M3."""
     if day_n == 31:
         return weights
     adjusted = {}
     for call_key in weights:
         w = dict(weights[call_key])
-        if day_n < 31:
+        if day_n <= 0:
+            # Pre-quarter: M2 cannot contribute (deployed = $0), redistribute its weight
+            factor = 0.0
+        elif day_n < 31:
             factor = 0.5 + 0.5 * (day_n / 31)
         else:
             factor = 1.0 + 0.3 * ((day_n - 31) / 59)
-        factor = max(0.3, min(factor, 1.5))
+        factor = max(0.0, min(factor, 1.5))
         w["m2"] = w["m2"] * factor
         total = w["m1"] + w["m2"] + w["m3"]
         if total > 0:
@@ -1570,6 +1931,142 @@ def _apply_day_adjustment(weights, day_n):
         else:
             adjusted[call_key] = w
     return adjusted
+
+
+def compute_wins_forecast_analysis(win_phases, hist_rates, wins_qtd, risk_analysis, wins_pacing):
+    """Compute W1/W2/W3 wins forecast models parallel to go-lives M1/M2/M3."""
+    won_acv = float(wins_qtd.get("acv", 0) or 0)
+    stage4_acv = float((win_phases.get("Stage 4 (TW Pipeline)") or {}).get("TOTAL_ACV", 0) or 0)
+    pre_tw_acv = float((win_phases.get("Pre-TW (Stages 1-3)") or {}).get("TOTAL_ACV", 0) or 0)
+
+    # Stage 4 risk split (already computed by q_pipeline_risk)
+    stage4_risk = risk_analysis.get("Stage 4") or {}
+    stage4_good = float(stage4_risk.get("GOOD_ACV", 0) or 0)
+    stage4_at_risk = float(stage4_risk.get("AT_RISK_ACV", 0) or 0)
+
+    # W1: Pipeline Risk Model — mirrors M1 but for wins
+    w1_commit = won_acv + stage4_good
+    w1_most_likely = won_acv + stage4_good + (stage4_at_risk * 0.4)  # 40% of at-risk still wins
+    w1_stretch = won_acv + stage4_acv + (pre_tw_acv * 0.15)  # all stage4 + some pre-TW
+
+    # W2: Historical Pacing Model — mirrors M2
+    if hist_rates:
+        pacing_ratios = []
+        for r in hist_rates:
+            won_snap = safe_float(r.get("WON_AT_SNAP", 0) or 0)
+            final = safe_float(r.get("FINAL_WINS", 0) or 0)
+            if final > 0 and won_snap > 0:
+                pacing_ratios.append(won_snap / final)
+        if pacing_ratios:
+            avg_ratio = sum(pacing_ratios) / len(pacing_ratios)
+            min_ratio = max(pacing_ratios)  # conservative
+            max_ratio = min(pacing_ratios)  # optimistic
+            w2_most_likely = won_acv / avg_ratio if avg_ratio > 0 else 0
+            w2_commit = won_acv / min_ratio if min_ratio > 0 else 0
+            w2_stretch = won_acv / max_ratio if max_ratio > 0 else 0
+        else:
+            w2_commit = w2_most_likely = w2_stretch = 0
+    else:
+        w2_commit = w2_most_likely = w2_stretch = 0
+        pacing_ratios = []
+
+    # W3: Stage Conversion Model — mirrors M3
+    if hist_rates:
+        stage4_rates, pretw_rates, new_win_pcts = [], [], []
+        for r in hist_rates:
+            s4_t = safe_float(r.get("STAGE4_TOTAL", 0) or 0)
+            s4_c = safe_float(r.get("STAGE4_CONVERTED", 0) or 0)
+            pt_t = safe_float(r.get("PRE_TW_TOTAL", 0) or 0)
+            pt_c = safe_float(r.get("PRE_TW_CONVERTED", 0) or 0)
+            new_c = safe_float(r.get("NEW_WINS_CONVERTED", 0) or 0)
+            final = safe_float(r.get("FINAL_WINS", 0) or 0)
+            if s4_t > 0: stage4_rates.append(s4_c / s4_t)
+            if pt_t > 0: pretw_rates.append(pt_c / pt_t)
+            if final > 0: new_win_pcts.append(new_c / final)
+
+        avg_s4_rate = sum(stage4_rates) / len(stage4_rates) if stage4_rates else 0.25
+        avg_pt_rate = sum(pretw_rates) / len(pretw_rates) if pretw_rates else 0.15
+        avg_new_pct = sum(new_win_pcts) / len(new_win_pcts) if new_win_pcts else 0.30
+        min_s4 = min(stage4_rates) if stage4_rates else avg_s4_rate
+        min_pt = min(pretw_rates) if pretw_rates else avg_pt_rate
+
+        known_ml = won_acv + (stage4_acv * avg_s4_rate) + (pre_tw_acv * avg_pt_rate)
+        known_commit = won_acv + (stage4_acv * min_s4) + (pre_tw_acv * min_pt)
+        w3_most_likely = known_ml / (1 - avg_new_pct) if avg_new_pct < 1 else known_ml
+        w3_commit = known_commit / (1 - min(new_win_pcts or [avg_new_pct]) * 0.8) if new_win_pcts else known_commit
+        w3_stretch = (won_acv + stage4_acv + pre_tw_acv) / (1 - max(new_win_pcts or [avg_new_pct])) if new_win_pcts else (won_acv + stage4_acv + pre_tw_acv)
+    else:
+        avg_s4_rate = avg_pt_rate = avg_new_pct = 0
+        min_s4 = min_pt = 0
+        stage4_rates = pretw_rates = new_win_pcts = []
+        w3_commit = w3_most_likely = w3_stretch = 0
+
+    # W4: Simple average ensemble
+    w4_commit = (w1_commit + w2_commit + w3_commit) / 3 if (w2_commit or w3_commit) else w1_commit
+    w4_most_likely = (w1_most_likely + w2_most_likely + w3_most_likely) / 3 if (w2_most_likely or w3_most_likely) else w1_most_likely
+    w4_stretch = (w1_stretch + w2_stretch + w3_stretch) / 3 if (w2_stretch or w3_stretch) else w1_stretch
+
+    result = {
+        "win_phases": {"won": won_acv, "stage4": stage4_acv, "pre_tw": pre_tw_acv,
+                       "stage4_good": stage4_good, "stage4_at_risk": stage4_at_risk},
+        "method1": {"commit": w1_commit, "most_likely": w1_most_likely, "stretch": w1_stretch,
+                    "label": "Pipeline Risk Model"},
+        "method2": {"commit": w2_commit, "most_likely": w2_most_likely, "stretch": w2_stretch,
+                    "label": "Historical Pacing Model", "ratios": pacing_ratios},
+        "method3": {"commit": w3_commit, "most_likely": w3_most_likely, "stretch": w3_stretch,
+                    "label": "Stage Conversion Model",
+                    "rates": {"stage4": avg_s4_rate, "pre_tw": avg_pt_rate, "new_wins": avg_new_pct}},
+        "method4": {"commit": w4_commit, "most_likely": w4_most_likely, "stretch": w4_stretch,
+                    "label": "Simple Ensemble (avg W1/W2/W3)"},
+        "hist_rates": hist_rates,
+        "recommended": {"commit": w4_commit, "most_likely": w4_most_likely, "stretch": w4_stretch},
+    }
+
+    # --- LOO Backtest: for each prior quarter, predict with the other quarters' rates ---
+    backtest_rows = []
+    for i, r in enumerate(hist_rates):
+        others = [x for j, x in enumerate(hist_rates) if j != i]
+        if not others:
+            continue
+        actual_final = safe_float(r.get("FINAL_WINS", 0) or 0)
+        won_snap = safe_float(r.get("WON_AT_SNAP", 0) or 0)
+        s4_t = safe_float(r.get("STAGE4_TOTAL", 0) or 0)
+        pt_t = safe_float(r.get("PRE_TW_TOTAL", 0) or 0)
+        new_c = safe_float(r.get("NEW_WINS_CONVERTED", 0) or 0)
+
+        # W2 LOO
+        loo_ratios = [safe_float(x.get("WON_AT_SNAP", 0) or 0) / safe_float(x.get("FINAL_WINS", 1) or 1)
+                      for x in others if safe_float(x.get("FINAL_WINS", 0) or 0) > 0]
+        loo_w2_ml = (won_snap / (sum(loo_ratios) / len(loo_ratios))) if loo_ratios else 0
+
+        # W3 LOO
+        loo_s4 = [safe_float(x.get("STAGE4_CONVERTED", 0) or 0) / safe_float(x.get("STAGE4_TOTAL", 1) or 1)
+                  for x in others if safe_float(x.get("STAGE4_TOTAL", 0) or 0) > 0]
+        loo_pt = [safe_float(x.get("PRE_TW_CONVERTED", 0) or 0) / safe_float(x.get("PRE_TW_TOTAL", 1) or 1)
+                  for x in others if safe_float(x.get("PRE_TW_TOTAL", 0) or 0) > 0]
+        loo_new = [safe_float(x.get("NEW_WINS_CONVERTED", 0) or 0) / safe_float(x.get("FINAL_WINS", 1) or 1)
+                   for x in others if safe_float(x.get("FINAL_WINS", 0) or 0) > 0]
+        loo_s4_r = sum(loo_s4) / len(loo_s4) if loo_s4 else avg_s4_rate
+        loo_pt_r = sum(loo_pt) / len(loo_pt) if loo_pt else avg_pt_rate
+        loo_new_r = sum(loo_new) / len(loo_new) if loo_new else avg_new_pct
+        known_w3 = won_snap + (s4_t * loo_s4_r) + (pt_t * loo_pt_r)
+        loo_w3_ml = known_w3 / (1 - loo_new_r) if loo_new_r < 1 else known_w3
+
+        w2_err = (loo_w2_ml - actual_final) / actual_final * 100 if actual_final > 0 else 0
+        w3_err = (loo_w3_ml - actual_final) / actual_final * 100 if actual_final > 0 else 0
+        w4_bt = (loo_w2_ml + loo_w3_ml) / 2
+        w4_err = (w4_bt - actual_final) / actual_final * 100 if actual_final > 0 else 0
+        backtest_rows.append({
+            "qtr": r.get("QTR", ""), "actual": actual_final,
+            "w2_ml": loo_w2_ml, "w3_ml": loo_w3_ml, "w4_ml": w4_bt,
+            "w2_err": w2_err, "w3_err": w3_err, "w4_err": w4_err,
+        })
+
+    result["backtest"] = backtest_rows
+    result["backtest_w2_mae"] = (sum(abs(b["w2_err"]) for b in backtest_rows) / len(backtest_rows)) if backtest_rows else None
+    result["backtest_w3_mae"] = (sum(abs(b["w3_err"]) for b in backtest_rows) / len(backtest_rows)) if backtest_rows else None
+    result["backtest_w4_mae"] = (sum(abs(b["w4_err"]) for b in backtest_rows) / len(backtest_rows)) if backtest_rows else None
+    return result
 
 
 def compute_weighted_ensemble(forecast_analysis, backtest_results, day_number=31):
@@ -2132,6 +2629,186 @@ def build_use_case_row(uc, consumption, bronze_tb=None, si_usage=None, cc_by_acc
 # FORECAST TAB HTML BUILDER (from peak_report._build_forecast_tab)
 # =============================================================================
 
+def _build_wins_forecast_tab_html(wfa, wins_forecast, day_number, week_number):
+    """HTML builder for wins forecast analysis — parallel to _build_forecast_tab."""
+    if not wfa:
+        return "<p>Wins forecast analysis data not available.</p>"
+    wp = wfa["win_phases"]
+    w1 = wfa["method1"]
+    w2 = wfa["method2"]
+    w3 = wfa["method3"]
+    w4 = wfa["method4"]
+    rec = wfa["recommended"]
+    hist = wfa.get("hist_rates", [])
+    rates = w3.get("rates", {})
+    prior_fy = CONFIG["prior_fy_label"]
+
+    total_win_pipeline = wp["won"] + wp["stage4"] + wp["pre_tw"]
+    def bar_pct(val):
+        return max(2, round(val / total_win_pipeline * 100)) if total_win_pipeline > 0 else 0
+    def bar_label(val, label):
+        return label if (val / total_win_pipeline * 100 if total_win_pipeline > 0 else 0) >= 8 else ""
+
+    # Historical reference table rows
+    hist_rows = ""
+    for r in hist:
+        qtr = r.get("QTR", "")
+        won_snap = safe_float(r.get("WON_AT_SNAP", 0) or 0)
+        final = safe_float(r.get("FINAL_WINS", 0) or 0)
+        ratio = (won_snap / final * 100) if final > 0 else 0
+        s4_t = safe_float(r.get("STAGE4_TOTAL", 0) or 0)
+        s4_c = safe_float(r.get("STAGE4_CONVERTED", 0) or 0)
+        s4_r = (s4_c / s4_t * 100) if s4_t > 0 else 0
+        pt_t = safe_float(r.get("PRE_TW_TOTAL", 0) or 0)
+        pt_c = safe_float(r.get("PRE_TW_CONVERTED", 0) or 0)
+        pt_r = (pt_c / pt_t * 100) if pt_t > 0 else 0
+        new_c = safe_float(r.get("NEW_WINS_CONVERTED", 0) or 0)
+        new_pct = (new_c / final * 100) if final > 0 else 0
+        hist_rows += f"""<tr>
+            <td><strong>{qtr}</strong></td>
+            <td class="number">{fmt_currency(won_snap)}</td>
+            <td class="number">{fmt_currency(final)}</td>
+            <td class="number">{ratio:.1f}%</td>
+            <td class="number">{s4_r:.1f}%</td>
+            <td class="number">{pt_r:.1f}%</td>
+            <td class="number">{new_pct:.1f}%</td>
+        </tr>"""
+
+    _is_current_q = CONFIG.get("is_current_quarter", True)
+    current_row = f"""<tr style="background: #e8f4f8; font-weight: 600;">
+        <td><strong>{CONFIG["fiscal_year_label"]} {"(Current)" if _is_current_q else "(Complete)"}</strong></td>
+        <td class="number">{fmt_currency(wp["won"])}</td>
+        <td class="number">?</td>
+        <td class="number">—</td>
+        <td class="number" colspan="3" style="text-align:center;color:#29B5E8;">{"In progress — see projections" if _is_current_q else "Quarter Complete"}</td>
+    </tr>"""
+
+    w_commit = wins_forecast.get("commit", 0)
+    w_ml = wins_forecast.get("most_likely", 0)
+    w_stretch = wins_forecast.get("stretch", 0)
+
+    backtest = wfa.get("backtest", [])
+    w2_mae = wfa.get("backtest_w2_mae")
+    w3_mae = wfa.get("backtest_w3_mae")
+    w4_mae = wfa.get("backtest_w4_mae")
+
+    # Backtest table HTML
+    bt_rows = ""
+    for b in backtest:
+        def _err_fmt(e):
+            color = "#28a745" if abs(e) <= 10 else "#dc3545"
+            sign = "+" if e >= 0 else ""
+            return f'<span style="color:{color};">{sign}{e:.1f}%</span>'
+        bt_rows += f"""<tr>
+            <td><strong>{b["qtr"]}</strong></td>
+            <td class="number">{fmt_currency(b["actual"])}</td>
+            <td class="number">{fmt_currency(b["w2_ml"])}</td>
+            <td class="number">{_err_fmt(b["w2_err"])}</td>
+            <td class="number">{fmt_currency(b["w3_ml"])}</td>
+            <td class="number">{_err_fmt(b["w3_err"])}</td>
+            <td class="number">{fmt_currency(b["w4_ml"])}</td>
+            <td class="number">{_err_fmt(b["w4_err"])}</td>
+        </tr>"""
+    backtest_html = f"""
+<h3>Model Backtest (Leave-One-Out)</h3>
+<p class="fa-note">For each prior quarter, models are trained on all <em>other</em> quarters and tested on that quarter. Lower error = better calibration.</p>
+<table class="fa-table">
+  <tr>
+    <th>Quarter</th><th>Actual Wins</th>
+    <th>W2 ML</th><th>W2 Err%</th>
+    <th>W3 ML</th><th>W3 Err%</th>
+    <th>W4 ML</th><th>W4 Err%</th>
+  </tr>
+  {bt_rows}
+  <tr style="background:#f0f0f0; font-weight:600;">
+    <td>Avg Abs Error</td><td>—</td>
+    <td>—</td><td class="number">{f"{w2_mae:.1f}%" if w2_mae is not None else "N/A"}</td>
+    <td>—</td><td class="number">{f"{w3_mae:.1f}%" if w3_mae is not None else "N/A"}</td>
+    <td>—</td><td class="number">{f"{w4_mae:.1f}%" if w4_mae is not None else "N/A"}</td>
+  </tr>
+</table>""" if backtest else ""
+
+    return f"""
+<h2>Wins Forecast Analysis</h2>
+<p class="summary">Three independent models project Commit, Most Likely, and Best Case wins using pipeline risk,
+historical pacing, and stage conversion rates. No external target exists for wins — compare to team forecast calls.</p>
+
+<h3>Current Pipeline State (Day {day_number}, Week {week_number})</h3>
+<div style="margin: 15px 0;">
+  <div style="display: flex; height: 36px; border-radius: 6px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+    <div style="width: {bar_pct(wp["won"])}%; background: #28a745; display: flex; align-items: center; justify-content: center; color: white; font-size: 0.8em; font-weight: 600; overflow: hidden; white-space: nowrap;">{bar_label(wp["won"], "Won QTD")}</div>
+    <div style="width: {bar_pct(wp["stage4"])}%; background: #007bff; display: flex; align-items: center; justify-content: center; color: white; font-size: 0.8em; font-weight: 600; overflow: hidden; white-space: nowrap;">{bar_label(wp["stage4"], "Stage 4")}</div>
+    <div style="width: {bar_pct(wp["pre_tw"])}%; background: #dc3545; display: flex; align-items: center; justify-content: center; color: white; font-size: 0.8em; font-weight: 600; overflow: hidden; white-space: nowrap;">{bar_label(wp["pre_tw"], "Pre-TW")}</div>
+  </div>
+  <div style="display: flex; flex-wrap: wrap; gap: 16px; margin-top: 8px; font-size: 0.85em;">
+    <span><span style="display:inline-block;width:12px;height:12px;background:#28a745;border-radius:2px;vertical-align:middle;margin-right:4px;"></span><strong>Won QTD:</strong> {fmt_currency(wp["won"])}</span>
+    <span><span style="display:inline-block;width:12px;height:12px;background:#007bff;border-radius:2px;vertical-align:middle;margin-right:4px;"></span><strong>Stage 4 (TW Pipeline):</strong> {fmt_currency(wp["stage4"])} ({fmt_currency(wp["stage4_good"])} good / {fmt_currency(wp["stage4_at_risk"])} at risk)</span>
+    <span><span style="display:inline-block;width:12px;height:12px;background:#dc3545;border-radius:2px;vertical-align:middle;margin-right:4px;"></span><strong>Pre-TW (Stages 1-3):</strong> {fmt_currency(wp["pre_tw"])}</span>
+  </div>
+</div>
+
+<h3>{prior_fy} Historical Reference (at Day {day_number})</h3>
+<table class="fa-table">
+  <tr><th>Quarter</th><th>Won at Day {day_number}</th><th>Final Wins</th><th>Day {day_number} / Final</th><th>Stage 4 Conv %</th><th>Pre-TW Conv %</th><th>New Wins %</th></tr>
+  {hist_rows}
+  {current_row}
+</table>
+
+<h3>Forecast Models</h3>
+<div class="fa-grid">
+  <div class="fa-card method1">
+    <h4>W1: Pipeline Risk Model</h4>
+    <p class="summary">Commit = Won QTD + Stage 4 "good" pipeline. ML adds 40% of at-risk Stage 4. Stretch adds Stage 4 + 15% Pre-TW.</p>
+    <div class="fa-vs" style="flex-wrap:nowrap; gap:8px;">
+      <div class="fa-vs-item" style="min-width:0; flex:1;"><div class="fa-vs-label">Commit</div><div class="fa-vs-value commit" style="font-size:1.3em;">{fmt_currency(w1["commit"])}</div></div>
+      <div class="fa-vs-item" style="min-width:0; flex:1;"><div class="fa-vs-label">Most Likely</div><div class="fa-vs-value likely" style="font-size:1.3em;">{fmt_currency(w1["most_likely"])}</div></div>
+      <div class="fa-vs-item" style="min-width:0; flex:1;"><div class="fa-vs-label">Stretch</div><div class="fa-vs-value stretch" style="font-size:1.3em;">{fmt_currency(w1["stretch"])}</div></div>
+    </div>
+  </div>
+  <div class="fa-card method2">
+    <h4>W2: Historical Pacing Model</h4>
+    <p class="summary">Extrapolates from {prior_fy} win pacing curves at Day {day_number}. LOO error: {f"{w2_mae:.1f}%" if w2_mae is not None else "N/A"}</p>
+    <div class="fa-vs" style="flex-wrap:nowrap; gap:8px;">
+      <div class="fa-vs-item" style="min-width:0; flex:1;"><div class="fa-vs-label">Commit</div><div class="fa-vs-value commit" style="font-size:1.3em;">{fmt_currency(w2["commit"])}</div></div>
+      <div class="fa-vs-item" style="min-width:0; flex:1;"><div class="fa-vs-label">Most Likely</div><div class="fa-vs-value likely" style="font-size:1.3em;">{fmt_currency(w2["most_likely"])}</div></div>
+      <div class="fa-vs-item" style="min-width:0; flex:1;"><div class="fa-vs-label">Stretch</div><div class="fa-vs-value stretch" style="font-size:1.3em;">{fmt_currency(w2["stretch"])}</div></div>
+    </div>
+  </div>
+  <div class="fa-card method3">
+    <h4>W3: Stage Conversion Model</h4>
+    <p class="summary">Applies {prior_fy} stage conversion rates + new pipeline factor. LOO error: {f"{w3_mae:.1f}%" if w3_mae is not None else "N/A"}</p>
+    <div class="fa-vs" style="flex-wrap:nowrap; gap:8px;">
+      <div class="fa-vs-item" style="min-width:0; flex:1;"><div class="fa-vs-label">Commit</div><div class="fa-vs-value commit" style="font-size:1.3em;">{fmt_currency(w3["commit"])}</div></div>
+      <div class="fa-vs-item" style="min-width:0; flex:1;"><div class="fa-vs-label">Most Likely</div><div class="fa-vs-value likely" style="font-size:1.3em;">{fmt_currency(w3["most_likely"])}</div></div>
+      <div class="fa-vs-item" style="min-width:0; flex:1;"><div class="fa-vs-label">Stretch</div><div class="fa-vs-value stretch" style="font-size:1.3em;">{fmt_currency(w3["stretch"])}</div></div>
+    </div>
+    <div style="margin-top:10px;font-size:0.82em;color:#555;">
+      Stage 4 conv: {rates.get("stage4",0)*100:.1f}% &nbsp;|&nbsp; Pre-TW conv: {rates.get("pre_tw",0)*100:.1f}% &nbsp;|&nbsp; New wins: {rates.get("new_wins",0)*100:.1f}% of final
+    </div>
+  </div>
+  <div class="fa-card recommended" style="grid-column: auto;">
+    <h4>W4: Recommended (avg W2/W3)</h4>
+    <p class="summary">Simple ensemble. LOO error: {f"{w4_mae:.1f}%" if w4_mae is not None else "N/A"}</p>
+    <div class="fa-vs" style="flex-wrap:nowrap; gap:8px;">
+      <div class="fa-vs-item" style="min-width:0; flex:1;"><div class="fa-vs-label">Commit</div><div class="fa-vs-value commit" style="font-size:1.3em;">{fmt_currency(rec["commit"])}</div></div>
+      <div class="fa-vs-item" style="min-width:0; flex:1;"><div class="fa-vs-label">Most Likely</div><div class="fa-vs-value likely" style="font-size:1.3em;">{fmt_currency(rec["most_likely"])}</div></div>
+      <div class="fa-vs-item" style="min-width:0; flex:1;"><div class="fa-vs-label">Stretch</div><div class="fa-vs-value stretch" style="font-size:1.3em;">{fmt_currency(rec["stretch"])}</div></div>
+    </div>
+    <div style="margin-top:12px;border-top:1px solid #ddd;padding-top:12px;font-size:0.9em;">
+      <strong>Team Forecast Calls:</strong>
+      <div class="fa-vs" style="flex-wrap:nowrap; gap:8px; margin-top:8px;">
+        <div class="fa-vs-item" style="min-width:0; flex:1;"><div class="fa-vs-label">Commit</div><div class="fa-vs-value" style="color:#333; font-size:1.3em;">{fmt_currency(w_commit)}</div></div>
+        <div class="fa-vs-item" style="min-width:0; flex:1;"><div class="fa-vs-label">Most Likely</div><div class="fa-vs-value" style="color:#333; font-size:1.3em;">{fmt_currency(w_ml)}</div></div>
+        <div class="fa-vs-item" style="min-width:0; flex:1;"><div class="fa-vs-label">Best Case</div><div class="fa-vs-value" style="color:#333; font-size:1.3em;">{fmt_currency(w_stretch)}</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{backtest_html}
+"""
+
+
 def _build_forecast_tab(fa, forecasts, deployed, day_number, week_number):
     if not fa:
         return "<p>Forecast analysis data not available.</p>"
@@ -2615,17 +3292,26 @@ def _run_all_queries(gvp_name, selected_quarter):
         "pipeline_phases": q_current_pipeline_phases,
         "cc_theater": q_cortex_code_theater_usage,
         "theater_consumption": q_theater_consumption,
+        "wins_qtd": q_wins_qtd,
+        "last7_wins": q_last7_wins,
+        "wins_forecast": q_wins_forecast_calls,
+        "wins_open_pipeline": q_wins_open_pipeline,
+        "wins_top5": q_wins_top5,
+        "wins_pipeline_phases": q_wins_pipeline_phases,
+        "wins_pipeline_movements": q_wins_pipeline_movements,
+        "wins_risk_analysis": q_wins_risk_analysis,
     }
-    # Queries that need fiscal calendar results
     phase1_with_args = {
         "pacing": lambda: q_prior_fy_pacing(fiscal["DAY_NUMBER"], fiscal["WEEK_NUMBER"]),
+        "wins_pacing": lambda: q_wins_pacing(fiscal["DAY_NUMBER"], fiscal["WEEK_NUMBER"]),
         "hist_conv_rates": lambda: q_historical_conversion_rates(fiscal["DAY_NUMBER"]),
+        "wins_hist_conv": lambda: q_wins_historical_conversion_rates(fiscal["DAY_NUMBER"]),
     }
     all_phase1 = {**phase1_queries, **phase1_with_args}
     p1_results = {}
     p1_errors = {}
 
-    with ThreadPoolExecutor(max_workers=27) as executor:
+    with ThreadPoolExecutor(max_workers=34) as executor:
         futures = {executor.submit(fn): name for name, fn in all_phase1.items()}
         for future in as_completed(futures):
             name = futures[future]
@@ -2668,8 +3354,18 @@ def _run_all_queries(gvp_name, selected_quarter):
     pipeline_phases = p1_results["pipeline_phases"]
     cc_theater = p1_results["cc_theater"]
     theater_consumption = p1_results["theater_consumption"]
+    wins_qtd = p1_results["wins_qtd"]
+    last7_wins = p1_results["last7_wins"]
+    wins_forecast = p1_results["wins_forecast"]
+    wins_open_pipeline = p1_results["wins_open_pipeline"]
+    wins_top5 = p1_results["wins_top5"]
+    wins_pipeline_phases = p1_results["wins_pipeline_phases"]
+    wins_pipeline_movements = p1_results["wins_pipeline_movements"]
+    wins_risk_analysis = p1_results["wins_risk_analysis"]
     pacing = p1_results["pacing"]
+    wins_pacing = p1_results["wins_pacing"]
     hist_conv_rates = p1_results["hist_conv_rates"]
+    wins_hist_conv = p1_results["wins_hist_conv"]
     # Fetch regional targets synchronously (outside thread pool for SiS compatibility)
     try:
         regional_targets = q_regional_targets()
@@ -2731,6 +3427,11 @@ def _run_all_queries(gvp_name, selected_quarter):
     forecast_analysis["velocity"] = velocity
     forecast_analysis["pipeline_detail"] = pipeline_detail
 
+    # --- Wins forecast analysis (parallel to go-lives Phase 3) ---
+    wins_forecast_analysis = compute_wins_forecast_analysis(
+        wins_pipeline_phases, wins_hist_conv, wins_qtd, risk_analysis, wins_pacing
+    )
+
     # Retrospective: compute multi-snapshot model accuracy for completed quarters
     _tick("Retrospective analysis...")
     if date.fromisoformat(selected_quarter["end"]) < date.today():
@@ -2758,6 +3459,12 @@ def _run_all_queries(gvp_name, selected_quarter):
         "bronze_created": bronze_created, "si_created": si_created, "pipeline_movements": pipeline_movements,
         "cc_theater": cc_theater, "cc_by_account": cc_by_account,
         "theater_consumption": theater_consumption,
+        "wins_qtd": wins_qtd, "last7_wins": last7_wins,
+        "wins_forecast": wins_forecast, "wins_open_pipeline": wins_open_pipeline,
+        "wins_top5": wins_top5, "wins_pacing": wins_pacing,
+        "wins_pipeline_movements": wins_pipeline_movements,
+        "wins_risk_analysis": wins_risk_analysis,
+        "wins_forecast_analysis": wins_forecast_analysis,
         "_config": {
             "gvp_name": CONFIG.get("gvp_name"),
             "quarter_start": CONFIG.get("quarter_start"),
@@ -2907,6 +3614,27 @@ def build_high_risk_table_html(high_risk_ucs):
 # TAB RENDERERS (from peak_app.py)
 # =============================================================================
 
+def fmt_ci(value):
+    """Integer-format currency for script talk track — 1 decimal for billions, whole numbers otherwise."""
+    if value is None or _is_nan(value):
+        return "N/A"
+    v = float(value)
+    if abs(v) >= 1_000_000_000:
+        return f"${v / 1_000_000_000:.1f}B"
+    elif abs(v) >= 1_000_000:
+        return f"${round(v / 1_000_000)}M"
+    elif abs(v) >= 1_000:
+        return f"${round(v / 1_000)}K"
+    return f"${round(v):,}"
+
+
+def fmt_pi(value):
+    """Integer-format percent for script talk track (no decimal places)."""
+    if value is None or _is_nan(value):
+        return "N/A"
+    return f"{round(float(value))}%"
+
+
 def _generate_script_summary(prompt):
     """Call Snowflake Cortex Complete and return a brief exec summary string."""
     try:
@@ -3005,6 +3733,46 @@ def render_script_tab(data):
     ytd_actual  = theater_consumption.get("ytd_actual", 0)
     ytd_target  = theater_consumption.get("ytd_target", 0)
     ytd_forecast = theater_consumption.get("ytd_forecast", 0)
+
+    # Wins variables
+    _wins_forecast = data.get("wins_forecast") or {}
+    _wins_qtd = data.get("wins_qtd") or {}
+    _wins_open = data.get("wins_open_pipeline") or {}
+    _wins_pacing = data.get("wins_pacing") or {}
+    _wins_pm = data.get("wins_pipeline_movements") or {}
+    w_won_acv = _wins_qtd.get("acv", 0)
+    w_won_count = _wins_qtd.get("count", 0)
+    w_last7_acv = (data.get("last7_wins") or {}).get("acv", 0)
+    w_last7_count = (data.get("last7_wins") or {}).get("count", 0)
+    w_open_acv = _wins_forecast.get("open_pipeline", 0)   # authoritative from pipeline targets
+    w_open_count = (data.get("wins_open_pipeline") or {}).get("count", 0)  # count only from MDM cache
+    w_ml = _wins_forecast.get("most_likely", 0)
+    w_commit = _wins_forecast.get("commit", 0)
+    w_stretch = _wins_forecast.get("stretch", 0)
+    w_target = _wins_forecast.get("target", 0)
+    w_won_pct_target = (w_won_acv / w_target * 100) if w_target else 0
+    w_ml_pct_target  = (w_ml / w_target * 100) if w_target else 0
+    w_won_pct_ml = (w_won_acv / w_ml * 100) if w_ml else 0
+    w_coverage = ((w_won_acv + w_open_acv) / w_ml * 100) if w_ml else 0
+    wp_day_avg = _wins_pacing.get("day_avg", 0)
+    wp_day_pct = _wins_pacing.get("day_pct", 0)
+    wp_week_avg = _wins_pacing.get("week_avg", 0)
+    wp_week_pct = _wins_pacing.get("week_pct", 0)
+    wp_final = _wins_pacing.get("prior_fy_final", 0)
+    # Pipeline movements
+    w_pushed_out = _wins_pm.get("pushed_out", {"count": 0, "acv": 0})
+    w_pulled_in  = _wins_pm.get("pulled_in",  {"count": 0, "acv": 0})
+    w_new_pipe   = _wins_pm.get("new_pipeline",{"count": 0, "acv": 0})
+    w_day_proj = (w_won_acv / (wp_day_pct / 100)) if wp_day_pct > 0 else None
+    w_week_proj = (w_won_acv / (wp_week_pct / 100)) if wp_week_pct > 0 else None
+    w_day_ahead = w_won_acv >= wp_day_avg if wp_day_avg else True
+    w_week_ahead = w_won_acv >= wp_week_avg if wp_week_avg else True
+    w_pacing_dir = (
+        "ahead on both daily and weekly basis" if (w_day_ahead and w_week_ahead)
+        else "behind on both daily and weekly basis" if (not w_day_ahead and not w_week_ahead)
+        else "ahead daily, behind weekly" if w_day_ahead
+        else "behind daily, ahead weekly"
+    )
     fy_target   = theater_consumption.get("fy_target", 0)
     fy_forecast = theater_consumption.get("fy_forecast", 0)
     cq_pct      = cq_actual   / cq_target   * 100 if cq_target   > 0 else 0
@@ -3015,61 +3783,255 @@ def render_script_tab(data):
     fq_label    = safe_str(fiscal.get("FISCAL_QUARTER", ""))
 
     # --- Cortex AI summary ---
-    _summary_prompt = (
-        f"You are preparing a brief executive summary for a PEAK Forecast Call for {_theater()} in {fy_label} {fq_label}. "
-        f"Write exactly 3 sentences: (1) go-live forecast vs target and pacing status, "
-        f"(2) consumption QTD vs target and full-year outlook, (3) the single most important risk or concern. "
-        f"Be direct, use numbers, no bullet points.\n\n"
-        f"Key data:\n"
-        f"- Go-live Most Likely: {fmt_currency(most_likely)} vs target {fmt_currency(gl_target)} ({ml_pct_of_target:.0f}% of target)\n"
-        f"- Deployed QTD: {fmt_currency(deployed['acv'])} ({deployed_pct_of_target:.0f}% of target), pacing {pacing_direction}\n"
-        f"- Consumption QTD: {fmt_currency(cq_actual)} ({cq_pct:.0f}% of CQ target {fmt_currency(cq_target)}), "
-        f"CQ forecast {fmt_currency(cq_forecast)} ({cq_fcst_pct:.0f}% of target), "
-        f"FY forecast {fmt_currency(fy_forecast)} ({fy_pct:.0f}% of FY target {fmt_currency(fy_target)})\n"
-        f"- Pipeline risk: {fmt_currency(total_risk_acv)} at risk, {fmt_currency(total_good)} good ({good_coverage:.0f}% good coverage vs ML)\n"
-        f"- Open pipeline: {fmt_currency(pipeline['acv'])}, ML coverage {coverage_pct:.0f}%"
+    # Build Cortex risk narrative from high-risk UCs (called after html is built, injected into Risk section)
+    def _build_risk_narrative_prompt():
+        if not high_risk_ucs:
+            return None
+        lines = []
+        for uc in high_risk_ucs[:8]:
+            acv = fmt_ci(safe_float(uc.get("USE_CASE_EACV", 0)))
+            acct = safe_str(uc.get("ACCOUNT_NAME", "Unknown"))
+            risk_type = safe_str(uc.get("RISK_TYPE", ""))
+            risk_text = safe_str(uc.get("RISK_SUMMARY", uc.get("SPECIALIST_COMMENTS", "")))[:120]
+            lines.append(f"- {acct} ({acv}): {risk_type} — {risk_text}")
+        risk_list = "\n".join(lines)
+        return (
+            f"You are summarizing risk themes for a PEAK Forecast Call for {_theater()} in {fy_label} {fq_label}. "
+            f"Based on these high-risk use cases, write exactly 2-3 sentences identifying the dominant risk patterns "
+            f"and what actions are most needed. Be direct, factual, no bullet points.\n\nHigh-risk use cases:\n{risk_list}"
+        )
+
+    # Wins risk: use pipeline targets Mature vs Open (avoids GO_LIVE_DATE filter problem)
+    w_mature = _wins_forecast.get("mature", 0)
+    w_open_total = _wins_forecast.get("open_pipeline", 0)
+    w_at_risk = max(0, w_open_total - w_mature)
+    w_mature_pct = (w_mature / w_open_total * 100) if w_open_total else 0
+    # If we win all mature pipeline, where does that put us?
+    w_won_plus_mature = w_won_acv + w_mature
+    w_mature_scenario_ml_pct  = (w_won_plus_mature / w_ml * 100) if w_ml else 0
+    w_mature_scenario_tgt_pct = (w_won_plus_mature / w_target * 100) if w_target else 0
+
+    # --- Deep wins risk analysis ---
+    COMPETITOR_PATTERNS = [
+        ("Databricks", ["databricks", "dbx"]),
+        ("AWS/Redshift/EMR", ["redshift", "emr", "eks", " aws "]),
+        ("GCP/BigQuery", ["bigquery", "bq", " gcp ", "google cloud"]),
+        ("Azure/Synapse", ["synapse", "azure", "microsoft fabric", "fabric"]),
+        ("Trino/Presto", ["trino", "presto"]),
+        ("Druid", ["druid"]),
+        ("Teradata", ["teradata"]),
+        ("Oracle", ["oracle"]),
+        ("Spark/Hadoop", ["spark", "hadoop", "hive"]),
+    ]
+    PRODUCT_PATTERNS = [
+        ("Performance/Latency", ["performance", "latency", "slow", "faster", "speed"]),
+        ("Cost/Pricing", ["cost", "pricing", "expensive", "price", "cheaper"]),
+        ("Feature Gap", ["missing", "limitation", "gap", "can't", "cannot", "doesn't support", "not supported"]),
+        ("Iceberg/Open Format", ["iceberg", "open format", "open table"]),
+        ("Stability/Reliability", ["stability", "stable", "reliability", "outage", "downtime", "issues"]),
+        ("Product POC/Evaluation", ["poc", "proof of concept", "evaluation", "testing", "benchmark"]),
+    ]
+
+    def compute_wins_risk_themes(rows):
+        if not rows:
+            return {}
+        # Risk category breakdown
+        risk_buckets = {}
+        for r in rows:
+            risk_str = safe_str(r.get("USE_CASE_RISK", "") or "")
+            acv = safe_float(r.get("USE_CASE_EACV", 0) or 0)
+            if not risk_str or risk_str.upper() in ("NONE", ""):
+                continue
+            for tag in [t.strip() for t in risk_str.split(";")]:
+                if tag:
+                    if tag not in risk_buckets:
+                        risk_buckets[tag] = {"count": 0, "acv": 0}
+                    risk_buckets[tag]["count"] += 1
+                    risk_buckets[tag]["acv"] += acv
+
+        # Competitor and product pattern extraction
+        competitor_hits = {}
+        product_hits = {}
+        for r in rows:
+            text = " ".join([
+                safe_str(r.get("RISK_DESCRIPTION", "") or ""),
+                safe_str(r.get("SPECIALIST_COMMENTS", "") or ""),
+            ]).lower()
+            acv = safe_float(r.get("USE_CASE_EACV", 0) or 0)
+            for label, keywords in COMPETITOR_PATTERNS:
+                if any(kw in text for kw in keywords):
+                    if label not in competitor_hits:
+                        competitor_hits[label] = {"count": 0, "acv": 0}
+                    competitor_hits[label]["count"] += 1
+                    competitor_hits[label]["acv"] += acv
+            for label, keywords in PRODUCT_PATTERNS:
+                if any(kw in text for kw in keywords):
+                    if label not in product_hits:
+                        product_hits[label] = {"count": 0, "acv": 0}
+                    product_hits[label]["count"] += 1
+                    product_hits[label]["acv"] += acv
+
+        # Top risky UCs for context (prefer those with RISK_DESCRIPTION)
+        top_risky = sorted(
+            [r for r in rows if r.get("RISK_DESCRIPTION") or (r.get("USE_CASE_RISK") and safe_str(r.get("USE_CASE_RISK", "")).upper() not in ("NONE", ""))],
+            key=lambda x: safe_float(x.get("USE_CASE_EACV", 0) or 0), reverse=True
+        )[:10]
+
+        return {
+            "risk_buckets": risk_buckets,
+            "competitor_hits": competitor_hits,
+            "product_hits": product_hits,
+            "top_risky": top_risky,
+        }
+
+    _wins_risk_rows = data.get("wins_risk_analysis") or []
+    _risk_themes = compute_wins_risk_themes(_wins_risk_rows)
+
+    def _build_wins_risk_prompt():
+        if not _risk_themes:
+            return None
+        # Build structured stats block
+        lines = [f"Deep analysis of {len(_wins_risk_rows)} open wins pipeline UCs for {_theater()} in {fy_label} {fq_label}.", ""]
+        # Risk category breakdown
+        rb = _risk_themes.get("risk_buckets", {})
+        if rb:
+            lines.append("RISK CATEGORY BREAKDOWN (by ACV):")
+            for tag, d in sorted(rb.items(), key=lambda x: -x[1]["acv"]):
+                lines.append(f"  {tag}: {d['count']} UCs, ${d['acv']/1e6:.1f}M")
+            lines.append("")
+        # Competitor breakdown
+        ch = _risk_themes.get("competitor_hits", {})
+        if ch:
+            lines.append("COMPETITOR MENTIONS (across all text fields):")
+            for comp, d in sorted(ch.items(), key=lambda x: -x[1]["acv"]):
+                lines.append(f"  {comp}: {d['count']} UCs, ${d['acv']/1e6:.1f}M ACV mentioned")
+            lines.append("")
+        # Product/performance breakdown
+        ph = _risk_themes.get("product_hits", {})
+        if ph:
+            lines.append("PRODUCT/PERFORMANCE PATTERNS:")
+            for issue, d in sorted(ph.items(), key=lambda x: -x[1]["acv"]):
+                lines.append(f"  {issue}: {d['count']} UCs, ${d['acv']/1e6:.1f}M ACV affected")
+            lines.append("")
+        # Top risky UCs with context
+        top = _risk_themes.get("top_risky", [])
+        if top:
+            lines.append("TOP RISK-FLAGGED UCS (for context, do NOT just list these):")
+            for uc in top[:8]:
+                acv = f"${safe_float(uc.get('USE_CASE_EACV',0))/1e6:.1f}M"
+                acct = safe_str(uc.get("ACCOUNT_NAME",""))
+                risk = safe_str(uc.get("USE_CASE_RISK",""))
+                desc = safe_str(uc.get("RISK_DESCRIPTION","") or uc.get("SPECIALIST_COMMENTS",""))[:200]
+                lines.append(f"  {acct} ({acv}, {risk}): {desc}")
+        lines.append("")
+        lines.append(
+            "Write 3-4 sentences for a PEAK Forecast Call risk summary:\n"
+            "(1) Which competitor(s) are appearing most frequently and in what context — is this a pattern or isolated?\n"
+            "(2) Are there recurring product or performance issues that could be blocking wins?\n"
+            "(3) Any systemic risk trend worth flagging to ELT (e.g., a specific competitor making gains in a workload, a performance issue blocking multiple deals).\n"
+            "Focus on PATTERNS not individual companies. Only mention a specific account if the same issue appears at 3+ accounts. "
+            "Do NOT base escalation on company size or deal stage — those are already accounted for. Be direct, no bullet points."
+        )
+        return "\n".join(lines)
+
+    with st.spinner("Generating wins risk summary..."):
+        _wins_risk_narrative = _generate_script_summary(_build_wins_risk_prompt())
+    w_shortfall = max(0, w_ml - w_won_acv - w_open_acv)
+    wins_forecast = _wins_forecast  # alias for use in f-string
+
+    # Pre-compute risk stat lines (no backslashes inside f-string allowed)
+    _comp_hits = _risk_themes.get("competitor_hits", {})
+    _prod_hits = _risk_themes.get("product_hits", {})
+    _comp_line = ""
+    _prod_line = ""
+    if _comp_hits:
+        parts = [f"{c}: {d['count']} UCs / ${d['acv']/1e6:.0f}M"
+                 for c, d in sorted(_comp_hits.items(), key=lambda x: -x[1]["acv"])[:4]]
+        _comp_line = (
+            '<p style="font-size:0.9em; color:#555; margin:4px 0;">'
+            '<strong>Competitive risk:</strong> ' + " | ".join(parts) + '</p>'
+        )
+    if _prod_hits:
+        parts = [f"{i}: {d['count']} UCs / ${d['acv']/1e6:.0f}M"
+                 for i, d in sorted(_prod_hits.items(), key=lambda x: -x[1]["acv"])[:4]]
+        _prod_line = (
+            '<p style="font-size:0.9em; color:#555; margin:4px 0;">'
+            '<strong>Product/performance themes:</strong> ' + " | ".join(parts) + '</p>'
+        )
+    _wins_narrative_html = (
+        f'<div class="analysis"><strong>Pipeline Risk Analysis (AI):</strong> '
+        f'{html_escape(_wins_risk_narrative)}</div>'
+        if _wins_risk_narrative else ""
     )
-    with st.spinner("Generating AI summary..."):
-        _ai_summary = _generate_script_summary(_summary_prompt)
-    _summary_html = ""
-    if _ai_summary:
-        _ai_escaped = html_escape(_ai_summary)
-        _summary_html = f"""
-<div style="background: #e8f4fd; border-left: 4px solid #007bff; border-radius: 6px; padding: 16px 20px; margin-bottom: 20px;">
-<p style="margin: 0 0 4px 0; font-size: 0.8em; font-weight: bold; color: #0056b3; text-transform: uppercase; letter-spacing: 0.05em;">AI Summary</p>
-<p style="margin: 0; font-size: 1em; color: #1a1a1a;">{_ai_escaped}</p>
-</div>"""
+    # WoW phrasing for wins ML
+    _ml_delta = wins_forecast.get("ml_delta")
+    if _ml_delta is None:
+        w_wow_phrase = ""
+    elif _ml_delta == 0:
+        w_wow_phrase = ", which is flat WoW,"
+    elif _ml_delta > 0:
+        w_wow_phrase = f", which is up {fmt_ci(_ml_delta)} WoW,"
+    else:
+        w_wow_phrase = f", which is down {fmt_ci(abs(_ml_delta))} WoW,"
 
     script_html = f"""
 <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 24px; font-family: Georgia, serif; font-size: 1.05em; line-height: 1.7;">
-{_summary_html}
+
+<h2 style="color: #1a1a2e; border-bottom: 3px solid #28a745; padding-bottom: 8px; margin-bottom: 16px;">Use Case Wins</h2>
+<h3 style="color: #333; border-bottom: 2px solid #28a745; padding-bottom: 8px;">Forecast Call</h3>
+<p>For Use Case Wins, our Most Likely call is <strong>{fmt_ci(w_ml)}</strong>{w_wow_phrase} against our {fiscal["FISCAL_QUARTER"]} target of <strong>{fmt_ci(w_target)}</strong>.
+This will bring us to <strong>{w_ml_pct_target:.0f}%</strong> of target.
+QTD we have won <strong>{fmt_ci(w_won_acv)}</strong> ({w_won_count:,} use cases) — which is <strong>{w_won_pct_ml:.0f}%</strong> of our Most Likely call{f" and <strong>{w_won_pct_target:.0f}%</strong> of target" if w_target else ""}.
+Our Commit is <strong>{fmt_ci(w_commit)}</strong> and Best Case is <strong>{fmt_ci(w_stretch)}</strong>.</p>
+<h3 style="color: #333; border-bottom: 2px solid #28a745; padding-bottom: 8px;">Pacing</h3>
+<p>Wins are pacing <strong>{w_pacing_dir}</strong>.
+On Day <strong>{day_number}</strong> of the quarter, won ACV of <strong>{fmt_ci(w_won_acv)}</strong>
+compares to a prior FY average of <strong>{fmt_ci(wp_day_avg)}</strong> at this point which was <strong>{wp_day_pct:.0f}%</strong> of prior {fiscal["FISCAL_QUARTER"]} final of <strong>{fmt_ci(wp_final)}</strong>.
+On a Weekly basis (Week <strong>{week_number}</strong>): prior FY average was <strong>{fmt_ci(wp_week_avg)}</strong> which was <strong>{wp_week_pct:.0f}%</strong> of prior {fiscal["FISCAL_QUARTER"]} final.
+So if we project these out through the end of the quarter we are Projected <strong>{fmt_ci(w_day_proj)}</strong> on the daily pacing and <strong>{fmt_ci(w_week_proj)}</strong> on the weekly pacing.</p>
+<h3 style="color: #333; border-bottom: 2px solid #28a745; padding-bottom: 8px;">Pipeline (Last 7 Days)</h3>
+<p>In the last 7 days, <strong>{w_pushed_out["count"]}</strong> use cases (<strong>{fmt_ci(w_pushed_out["acv"])}</strong>) were pushed out of the quarter based on decision date,
+while <strong>{w_pulled_in["count"]}</strong> (<strong>{fmt_ci(w_pulled_in["acv"])}</strong>) were pulled in.
+In the last 7 days, <strong>{w_last7_count}</strong> use cases for <strong>{fmt_ci(w_last7_acv)}</strong> were won.
+<strong>{w_new_pipe["count"]}</strong> new use cases (<strong>{fmt_ci(w_new_pipe["acv"])}</strong>) were created with a decision date in {fiscal["FISCAL_QUARTER"]}.
+Open wins pipeline stands at <strong>{fmt_ci(w_open_acv)}</strong> ({w_open_count:,} use cases) — Won+Open coverage is <strong>{fmt_pi(w_coverage)}</strong> vs Most Likely.
+{f"We have a shortfall of <strong>{fmt_ci(w_shortfall)}</strong> between Won+Open and Most Likely." if w_shortfall > 1e6 else "Won+Open pipeline covers the Most Likely forecast."}</p>
+<h3 style="color: #333; border-bottom: 2px solid #28a745; padding-bottom: 8px;">Risk</h3>
+<p>Of the <strong>{fmt_ci(w_open_total)}</strong> in open wins pipeline, <strong>{fmt_ci(w_mature)}</strong> ({w_mature_pct:.0f}%) is mature/high-conviction pipeline,
+leaving <strong>{fmt_ci(w_at_risk)}</strong> as less mature pipeline at risk of not converting this quarter.
+If we win all of the mature pipeline, Won+Mature would be <strong>{fmt_ci(w_won_plus_mature)}</strong> — <strong>{w_mature_scenario_ml_pct:.0f}%</strong> of Most Likely and <strong>{w_mature_scenario_tgt_pct:.0f}%</strong> of target.
+{f"We still have a shortfall of <strong>{fmt_ci(w_shortfall)}</strong> between Won+Open and Most Likely — additional pipeline needs to be created or accelerated." if w_shortfall > 1e6 else "Won+Open pipeline covers the Most Likely forecast."}</p>
+{_comp_line}
+{_prod_line}
+{_wins_narrative_html}
+
+<h2 style="color: #1a1a2e; border-bottom: 3px solid #007bff; padding-bottom: 8px; margin: 28px 0 16px 0;">Go-Lives &amp; Consumption</h2>
 <h3 style="color: #333; border-bottom: 2px solid #007bff; padding-bottom: 8px;">Forecast Call</h3>
-<p>For {_theater()}, my Most Likely call for go-lives this quarter is <strong>{fmt_currency(most_likely)}</strong>{ml_wow_text}, <strong>{fmt_pct(ml_pct_of_target)}</strong> of {fiscal["FISCAL_QUARTER"]} Target.
-We have deployed <strong>{fmt_currency(deployed["acv"])}</strong> QTD against a target of <strong>{fmt_currency(gl_target)}</strong> (<strong>{fmt_pct(deployed_pct_of_target)}</strong> of target).
-In the last 7 days, <strong>{last7["count"]}</strong> use cases (<strong>{fmt_currency(last7["acv"])}</strong>) went live.
-Our open pipeline is <strong>{fmt_currency(pipeline["acv"])}</strong>, giving us <strong>{fmt_pct(coverage_pct)}</strong> ML coverage (deployed + open pipeline vs Most Likely).</p>
+<p>For Go-Lives, our Most Likely call is <strong>{fmt_ci(most_likely)}</strong>{ml_wow_text}.
+This will bring us to <strong>{fmt_pi(ml_pct_of_target)}</strong> of {fiscal["FISCAL_QUARTER"]} Target.
+QTD we have deployed <strong>{fmt_ci(deployed["acv"])}</strong> against a target of <strong>{fmt_ci(gl_target)}</strong> which is <strong>{fmt_pi(deployed_pct_of_target)}</strong> of our target and <strong>{fmt_pi(deployed_pct)}</strong> of our Most Likely Call.
+In the last 7 days, <strong>{last7["count"]}</strong> use cases for <strong>{fmt_ci(last7["acv"])}</strong> went live.
+Our open pipeline is <strong>{fmt_ci(pipeline["acv"])}</strong>, giving us <strong>{fmt_pi(coverage_pct)}</strong> ML coverage.</p>
 <h3 style="color: #333; border-bottom: 2px solid #007bff; padding-bottom: 8px;">Pacing</h3>
 <p>Go-lives are pacing <strong>{pacing_direction}</strong>.
-On Day <strong>{day_number}</strong> of the quarter, our current deployed ACV of <strong>{fmt_currency(deployed["acv"])}</strong>
-compares to a prior FY average of <strong>{fmt_currency(day_avg)}</strong> deployed by this day
-(<strong>{fmt_pct(day_pct_val)}</strong> of the prior FY average final of <strong>{fmt_currency(CONFIG["prior_fy_avg_final"] * 1e6)}</strong>).
-On a weekly basis (Week <strong>{week_number}</strong>), the prior FY average deployed was <strong>{fmt_currency(week_avg)}</strong>
-(<strong>{fmt_pct(week_pct_val)}</strong> of final).
-If we continue to follow this pacing, our projected quarter-end deployed ACV would be{f" <strong>{fmt_currency(day_projection)}</strong> based on daily pacing" if day_projection else " unavailable (no prior FY daily data)"}{f" and <strong>{fmt_currency(week_projection)}</strong> based on weekly pacing" if week_projection else ""}.</p>
+On Day <strong>{day_number}</strong> of the quarter, our current deployed ACV of <strong>{fmt_ci(deployed["acv"])}</strong>
+compares to a prior {fiscal["FISCAL_QUARTER"]} average of <strong>{fmt_ci(day_avg)}</strong> deployed by this day which was <strong>{fmt_pi(day_pct_val)}</strong> of the prior FY average final of <strong>{fmt_ci(CONFIG["prior_fy_avg_final"] * 1e6)}</strong>.
+On a weekly basis (Week <strong>{week_number}</strong>), the prior FY average deployed was <strong>{fmt_ci(week_avg)}</strong> which was <strong>{fmt_pi(week_pct_val)}</strong> of final.
+If we continue to follow this pacing, our projected quarter-end deployed ACV would be{f" <strong>{fmt_ci(day_projection)}</strong> based on daily pacing" if day_projection else " unavailable (no prior FY daily data)"}{f" and <strong>{fmt_ci(week_projection)}</strong> based on weekly pacing" if week_projection else ""}.</p>
 <h3 style="color: #333; border-bottom: 2px solid #007bff; padding-bottom: 8px;">Pipeline (Last 7 Days)</h3>
-<p>In the last 7 days, <strong>{pm_pushed_out["count"]}</strong> use cases (<strong>{fmt_currency(pm_pushed_out["acv"])}</strong>) were pushed out of the quarter
-while <strong>{pm_pulled_in["count"]}</strong> (<strong>{fmt_currency(pm_pulled_in["acv"])}</strong>) were pulled in.
-<strong>{pm_imp_started["count"]}</strong> use cases (<strong>{fmt_currency(pm_imp_started["acv"])}</strong>) started implementation with a go-live this quarter.
-In the last 7 days, <strong>{pm_new_pipeline["count"]}</strong> use cases were created with a go-live date in {fiscal["FISCAL_QUARTER"]} for <strong>{fmt_currency(pm_new_pipeline["acv"])}</strong>.</p>
+<p>In the last 7 days, <strong>{pm_pushed_out["count"]}</strong> use cases (<strong>{fmt_ci(pm_pushed_out["acv"])}</strong>) were pushed out of the quarter
+while <strong>{pm_pulled_in["count"]}</strong> (<strong>{fmt_ci(pm_pulled_in["acv"])}</strong>) were pulled in.
+<strong>{pm_imp_started["count"]}</strong> use cases (<strong>{fmt_ci(pm_imp_started["acv"])}</strong>) started implementation with a go-live this quarter.
+In the last 7 days, <strong>{pm_new_pipeline["count"]}</strong> use cases were created with a go-live date in {fiscal["FISCAL_QUARTER"]} for <strong>{fmt_ci(pm_new_pipeline["acv"])}</strong>.</p>
 <h3 style="color: #333; border-bottom: 2px solid #007bff; padding-bottom: 8px;">Consumption</h3>
-<p>QTD consumption for {fy_label} {fq_label} is <strong>{fmt_currency(cq_actual)}</strong>, which is <strong>{cq_pct:.1f}%</strong> of our quarterly target of <strong>{fmt_currency(cq_target)}</strong>.
-Our team forecast call for the quarter is <strong>{fmt_currency(cq_forecast)}</strong>, projecting <strong>{cq_fcst_pct:.1f}%</strong> attainment of target.
-Year to date, we have consumed <strong>{fmt_currency(ytd_actual)}</strong> against a YTD target of <strong>{fmt_currency(ytd_target)}</strong> (<strong>{ytd_pct:.1f}%</strong> attainment).
-Our {fy_label} full-year forecast of <strong>{fmt_currency(fy_forecast)}</strong> represents <strong>{fy_pct:.1f}%</strong> of the full-year target of <strong>{fmt_currency(fy_target)}</strong>.</p>
+<p>QTD consumption for {fy_label} {fq_label} is <strong>{fmt_ci(cq_actual)}</strong>, which is <strong>{cq_pct:.0f}%</strong> of our quarterly target of <strong>{fmt_ci(cq_target)}</strong>.
+Our team forecast call for the quarter is <strong>{fmt_ci(cq_forecast)}</strong>, projecting <strong>{cq_fcst_pct:.0f}%</strong> attainment of target.
+Year to date, we have consumed <strong>{fmt_ci(ytd_actual)}</strong> against a YTD target of <strong>{fmt_ci(ytd_target)}</strong> (<strong>{ytd_pct:.0f}%</strong> attainment).
+Our {fy_label} full-year forecast of <strong>{fmt_ci(fy_forecast)}</strong> represents <strong>{fy_pct:.0f}%</strong> of the full-year target of <strong>{fmt_ci(fy_target)}</strong>.</p>
 <h3 style="color: #333; border-bottom: 2px solid #007bff; padding-bottom: 8px;">Risk</h3>
-<p>Total pipeline risk stands at <strong>{fmt_currency(total_risk_acv)}</strong>, leaving
-<strong>{fmt_currency(total_good)}</strong> in good pipeline for <strong>{fmt_pct(good_coverage)}</strong> good coverage vs Most Likely.
-We are currently at <strong>{fmt_pct(deployed_pct_of_target)}</strong> of our go-live target.</p>
+<p>Total pipeline risk stands at <strong>{fmt_ci(total_risk_acv)}</strong>, leaving
+<strong>{fmt_ci(total_good)}</strong> in good pipeline for <strong>{fmt_pi(good_coverage)}</strong> good coverage vs Most Likely.
+We are currently at <strong>{fmt_pi(deployed_pct_of_target)}</strong> of our go-live target.</p>
 {high_risk_table_html}
 <h3 style="color: #333; border-bottom: 2px solid #007bff; padding-bottom: 8px;">Sales Play Detail</h3>
 """
@@ -3088,14 +4050,14 @@ We are currently at <strong>{fmt_pct(deployed_pct_of_target)}</strong> of our go
     br_create_pct = f"{br_created / br_create_target * 100:.0f}%" if br_create_target else "N/A"
     script_html += f"""
 <h4 style="color: #555;">Bronze (Make Your Data AI Ready)</h4>
-<p>Bronze has deployed <strong>{fmt_currency(br_dep["acv"])}</strong> ({br_dep["count"]} UCs) QTD
-with <strong>{fmt_currency(br_open["acv"])}</strong> ({br_open["count"]} UCs) in open pipeline.
+<p>Bronze has deployed <strong>{fmt_ci(br_dep["acv"])}</strong> ({br_dep["count"]} UCs) QTD
+with <strong>{fmt_ci(br_open["acv"])}</strong> ({br_open["count"]} UCs) in open pipeline.
 Gap to deployed target: <strong>{bronze_gap}</strong>.
 We have created <strong>{br_created}</strong> Bronze use cases this quarter against a creation target of <strong>{br_create_target_str}</strong> ({br_create_pct}).
 QTD TB Ingested: <strong>{bronze_tb_total:.1f} TB</strong>.
 Regional coverage: <strong>{play_detail["bronze"]["regions"]}</strong> of 8 {_theater()} regions contributing.</p>
 <div class="risk-box">
-<strong>Risk Summary ({bronze_risk["at_risk"]} of {bronze_risk["total"]} use cases, {fmt_currency(bronze_risk["acv_at_risk"])} ACV at risk):</strong><br>
+<strong>Risk Summary ({bronze_risk["at_risk"]} of {bronze_risk["total"]} use cases, {fmt_ci(bronze_risk["acv_at_risk"])} ACV at risk):</strong><br>
 {bronze_risk["narrative_html"]}
 </div>
 """
@@ -3108,13 +4070,13 @@ Regional coverage: <strong>{play_detail["bronze"]["regions"]}</strong> of 8 {_th
     si_risk = build_risk_narrative(play_risk["si"])
     script_html += f"""
 <h4 style="color: #555;">Snowflake Intelligence (AI: Snowflake Intelligence &amp; Agents)</h4>
-<p>SI has deployed <strong>{fmt_currency(si_dep["acv"])}</strong> ({si_dep["count"]} UCs) QTD
-with <strong>{fmt_currency(si_open["acv"])}</strong> ({si_open["count"]} UCs) in open pipeline.
+<p>SI has deployed <strong>{fmt_ci(si_dep["acv"])}</strong> ({si_dep["count"]} UCs) QTD
+with <strong>{fmt_ci(si_open["acv"])}</strong> ({si_open["count"]} UCs) in open pipeline.
 Deployed target: <strong>{si_target_str}</strong>. Gap to target: <strong>{si_gap}</strong>.
 Regional coverage: <strong>{play_detail["si"]["regions"]}</strong> of 8 {_theater()} regions contributing.</p>
-<p>Theater SI Usage (Last 30 Days): {si_theater["accounts"]:,} Accounts | {si_theater["users"]:,} Users | {si_theater["credits"]:,} Credits | {fmt_currency(si_theater["revenue"])} Revenue.</p>
+<p>Theater SI Usage (Last 30 Days): {si_theater["accounts"]:,} Accounts | {si_theater["users"]:,} Users | {si_theater["credits"]:,} Credits | {fmt_ci(si_theater["revenue"])} Revenue.</p>
 <div class="risk-box">
-<strong>Risk Summary ({si_risk["at_risk"]} of {si_risk["total"]} use cases, {fmt_currency(si_risk["acv_at_risk"])} ACV at risk):</strong><br>
+<strong>Risk Summary ({si_risk["at_risk"]} of {si_risk["total"]} use cases, {fmt_ci(si_risk["acv_at_risk"])} ACV at risk):</strong><br>
 {si_risk["narrative_html"]}
 </div>
 """
@@ -3127,22 +4089,22 @@ Regional coverage: <strong>{play_detail["si"]["regions"]}</strong> of 8 {_theate
     sql_risk = build_risk_narrative(play_risk["sqlserver"])
     script_html += f"""
 <h4 style="color: #555;">SQL Server Migration (Modernize Your Data Estate)</h4>
-<p>SQL Server has deployed <strong>{fmt_currency(sql_dep["acv"])}</strong> ({sql_dep["count"]} UCs) QTD
-with <strong>{fmt_currency(sql_open["acv"])}</strong> ({sql_open["count"]} UCs) in open pipeline.
+<p>SQL Server has deployed <strong>{fmt_ci(sql_dep["acv"])}</strong> ({sql_dep["count"]} UCs) QTD
+with <strong>{fmt_ci(sql_open["acv"])}</strong> ({sql_open["count"]} UCs) in open pipeline.
 Deployed target: <strong>{sqlserver_target}</strong>. Gap to target: <strong>{sql_gap}</strong>.
 Regional coverage: <strong>{play_detail["sqlserver"]["regions"]}</strong> of 8 {_theater()} regions contributing.</p>
 <div class="risk-box">
-<strong>Risk Summary ({sql_risk["at_risk"]} of {sql_risk["total"]} use cases, {fmt_currency(sql_risk["acv_at_risk"])} ACV at risk):</strong><br>
+<strong>Risk Summary ({sql_risk["at_risk"]} of {sql_risk["total"]} use cases, {fmt_ci(sql_risk["acv_at_risk"])} ACV at risk):</strong><br>
 {sql_risk["narrative_html"]}
 </div>
 """
     script_html += f"""
 <h3 style="color: #333; border-bottom: 2px solid #007bff; padding-bottom: 8px;">Partner and SD Attach</h3>
-<p>Partner attach rate on the open pipeline is <strong>{fmt_pct(p_rate)}</strong>
-({p_cnt} use cases, {fmt_currency(p_acv)} ACV).
-SD attach rate is <strong>{fmt_pct(sd_rate)}</strong>
-({sd_cnt} use cases, {fmt_currency(sd_acv_val)} ACV).
-The remaining <strong>{unassisted_cnt}</strong> use cases ({fmt_currency(unassisted_acv)} ACV, {fmt_pct(unassisted_rate)}) are unassisted (Customer Only, Unknown, or None).
+<p>Partner attach rate on the open pipeline is <strong>{fmt_pi(p_rate)}</strong>
+({p_cnt} use cases, {fmt_ci(p_acv)} ACV).
+SD attach rate is <strong>{fmt_pi(sd_rate)}</strong>
+({sd_cnt} use cases, {fmt_ci(sd_acv_val)} ACV).
+The remaining <strong>{unassisted_cnt}</strong> use cases ({fmt_ci(unassisted_acv)} ACV, {fmt_pi(unassisted_rate)}) are unassisted (Customer Only, Unknown, or None).
 Of the <strong>{partner_ps_total}</strong> accounts with Partner or PS-attached use cases, <strong>{partner_ps_cc}</strong> (<strong>{partner_ps_cc_pct}%</strong>) are actively using Cortex Code CLI.</p>
 <h3 style="color: #333; border-bottom: 2px solid #007bff; padding-bottom: 8px;">Use Case Velocity</h3>
 <p>Average stage transition times for use cases created since FY26 Q1 (all stages):</p>
@@ -3155,6 +4117,166 @@ Of the <strong>{partner_ps_total}</strong> accounts with Partner or PS-attached 
 </div>
 </div>"""
     st.html(STREAMLIT_CSS + script_html)
+
+    # Cortex risk narrative (rendered as native Streamlit after the HTML)
+    _risk_prompt = _build_risk_narrative_prompt()
+    if _risk_prompt:
+        with st.spinner("Generating risk summary..."):
+            _risk_narrative = _generate_script_summary(_risk_prompt)
+        if _risk_narrative:
+            st.markdown(
+                f'<div style="background: #fff5f5; border-left: 4px solid #dc3545; border-radius: 6px; '
+                f'padding: 14px 18px; margin: -8px 0 16px 0; font-family: Georgia, serif; font-size: 1em; line-height: 1.6;">'
+                f'<p style="margin: 0 0 4px 0; font-size: 0.75em; font-weight: bold; color: #c0392b; '
+                f'text-transform: uppercase; letter-spacing: 0.05em;">AI Risk Summary</p>'
+                f'<p style="margin: 0;">{html_escape(_risk_narrative)}</p>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+
+
+
+def render_wins_tab(data):
+    """Render the Use Case Wins tab — QTD wins, forecast calls, open pipeline, top UCs."""
+    fiscal = data["fiscal"]
+    wins_qtd = data.get("wins_qtd") or {}
+    last7_wins = data.get("last7_wins") or {}
+    wins_forecast = data.get("wins_forecast") or {}
+    wins_open = data.get("wins_open_pipeline") or {}
+    wins_top5 = data.get("wins_top5") or []
+    wins_pacing = data.get("wins_pacing") or {}
+    cfg = data["_config"]
+
+    quarter = safe_str(fiscal["FISCAL_QUARTER"])
+    day_number = safe_int(fiscal["DAY_NUMBER"])
+    week_number = safe_int(fiscal["WEEK_NUMBER"])
+    fy_label = cfg.get("fiscal_year_label", "FY??")
+
+    won_acv = wins_qtd.get("acv", 0)
+    won_count = wins_qtd.get("count", 0)
+    last7_acv = last7_wins.get("acv", 0)
+    last7_count = last7_wins.get("count", 0)
+    open_acv = wins_forecast.get("open_pipeline", 0)   # authoritative from pipeline targets
+    open_count = wins_open.get("count", 0)
+
+    w_commit = wins_forecast.get("commit", 0)
+    w_ml = wins_forecast.get("most_likely", 0)
+    w_stretch = wins_forecast.get("stretch", 0)
+    w_won_snap = wins_forecast.get("won_actual", 0)   # pipeline targets snapshot
+    w_open_snap = wins_forecast.get("open_pipeline", 0)
+
+    won_pct_ml = (won_acv / w_ml * 100) if w_ml else 0
+    coverage_pct = ((won_acv + open_acv) / w_ml * 100) if w_ml else 0
+
+    w_commit_delta = wins_forecast.get("commit_delta")
+    w_ml_delta = wins_forecast.get("ml_delta")
+    w_stretch_delta = wins_forecast.get("stretch_delta")
+
+    wp_day_avg = wins_pacing.get("day_avg", 0)
+    wp_day_pct = wins_pacing.get("day_pct", 0)
+    wp_week_avg = wins_pacing.get("week_avg", 0)
+    wp_week_pct = wins_pacing.get("week_pct", 0)
+    wp_final = wins_pacing.get("prior_fy_final", 0)
+
+    day_proj = (won_acv / (wp_day_pct / 100)) if wp_day_pct > 0 else None
+    week_proj = (won_acv / (wp_week_pct / 100)) if wp_week_pct > 0 else None
+    day_ahead = won_acv >= wp_day_avg if wp_day_avg else True
+    week_ahead = won_acv >= wp_week_avg if wp_week_avg else True
+
+    gl_total = won_acv + open_acv
+    won_bar_pct = int(won_acv / gl_total * 100) if gl_total else 0
+    open_bar_pct = 100 - won_bar_pct
+
+    pacing_label = (
+        "ahead on both daily and weekly basis" if (day_ahead and week_ahead)
+        else "behind on both daily and weekly basis" if (not day_ahead and not week_ahead)
+        else "ahead daily, behind weekly" if day_ahead
+        else "behind daily, ahead weekly"
+    )
+
+    wins_html = f"""
+<div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 24px; font-family: -apple-system, sans-serif;">
+
+<h2 style="color: #1a1a2e; margin: 0 0 20px 0;">Use Case Wins — {fy_label} {quarter}</h2>
+
+<!-- Summary metrics row -->
+<div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px;">
+  <div style="background: white; border-radius: 8px; padding: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); border-top: 4px solid #28a745;">
+    <div style="font-size: 0.75em; color: #666; text-transform: uppercase; letter-spacing: 0.5px;">Won QTD</div>
+    <div style="font-size: 1.8em; font-weight: bold; color: #1a1a2e;">{fmt_currency(won_acv)}</div>
+    <div style="font-size: 0.85em; color: #666;">{won_count:,} use cases</div>
+  </div>
+  <div style="background: white; border-radius: 8px; padding: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); border-top: 4px solid #007bff;">
+    <div style="font-size: 0.75em; color: #666; text-transform: uppercase; letter-spacing: 0.5px;">% of ML Forecast</div>
+    <div style="font-size: 1.8em; font-weight: bold; color: #{'28a745' if won_pct_ml >= 50 else '1a1a2e'};">{won_pct_ml:.0f}%</div>
+    <div style="font-size: 0.85em; color: #666;">Day {day_number} of {92 if quarter == 'Q2' else 91}</div>
+  </div>
+  <div style="background: white; border-radius: 8px; padding: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); border-top: 4px solid #ffc107;">
+    <div style="font-size: 0.75em; color: #666; text-transform: uppercase; letter-spacing: 0.5px;">Last 7 Days</div>
+    <div style="font-size: 1.8em; font-weight: bold; color: #1a1a2e;">{fmt_currency(last7_acv)}</div>
+    <div style="font-size: 0.85em; color: #666;">{last7_count:,} use cases</div>
+  </div>
+  <div style="background: white; border-radius: 8px; padding: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); border-top: 4px solid #17a2b8;">
+    <div style="font-size: 0.75em; color: #666; text-transform: uppercase; letter-spacing: 0.5px;">Won + Open Coverage</div>
+    <div style="font-size: 1.8em; font-weight: bold; color: #{'28a745' if coverage_pct >= 100 else '1a1a2e'};">{coverage_pct:.0f}%</div>
+    <div style="font-size: 0.85em; color: #666;">vs ML Forecast</div>
+  </div>
+</div>
+
+<!-- Forecast calls table -->
+<h3 style="color: #333; border-bottom: 2px solid #007bff; padding-bottom: 8px;">Forecast Calls</h3>
+<table class="forecast-table">
+  <tr><th>Scenario</th><th>Amount</th><th>WoW</th></tr>
+  <tr><td><span class="status-commit">Commit</span></td><td>{fmt_currency(w_commit)}</td><td>{fmt_delta_html(w_commit_delta)}</td></tr>
+  <tr><td><span class="status-likely">Most Likely</span></td><td>{fmt_currency(w_ml)}</td><td>{fmt_delta_html(w_ml_delta)}</td></tr>
+  <tr><td><span class="status-stretch">Best Case</span></td><td>{fmt_currency(w_stretch)}</td><td>{fmt_delta_html(w_stretch_delta)}</td></tr>
+</table>
+
+<!-- Won vs Open pipeline -->
+<h3 style="color: #333; border-bottom: 2px solid #007bff; padding-bottom: 8px; margin-top: 24px;">Pipeline Status</h3>
+<div style="background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); margin-bottom: 20px;">
+  <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+    <span><strong style="color: #28a745;">Won QTD:</strong> {fmt_currency(won_acv)} ({won_count:,} UCs)</span>
+    <span><strong style="color: #007bff;">Open Pipeline:</strong> {fmt_currency(open_acv)} ({open_count:,} UCs)</span>
+  </div>
+  <div style="height: 24px; border-radius: 12px; overflow: hidden; background: #e9ecef;">
+    <div style="height: 100%; width: {won_bar_pct}%; background: #28a745; display: inline-block; border-radius: 12px 0 0 12px;"></div>
+    <div style="height: 100%; width: {open_bar_pct}%; background: #007bff; display: inline-block;"></div>
+  </div>
+  <div style="font-size: 0.85em; color: #666; margin-top: 8px;">
+    Won+Open Total: {fmt_currency(gl_total)} &nbsp;|&nbsp; ML Forecast: {fmt_currency(w_ml)} &nbsp;|&nbsp; Coverage: {coverage_pct:.0f}%
+  </div>
+</div>
+
+<!-- Pacing -->
+<h3 style="color: #333; border-bottom: 2px solid #007bff; padding-bottom: 8px;">Pacing vs Prior FY</h3>
+<div class="analysis">
+Wins are pacing <strong>{pacing_label}</strong>.
+On Day <strong>{day_number}</strong>, won ACV of <strong>{fmt_currency(won_acv)}</strong>
+compares to prior FY average of <strong>{fmt_currency(wp_day_avg)}</strong> ({wp_day_pct:.0f}% of final avg {fmt_currency(wp_final)}).
+Weekly (Wk {week_number}): prior FY avg = <strong>{fmt_currency(wp_week_avg)}</strong> ({wp_week_pct:.0f}% of final).
+Projected quarter-end: {f'<strong>{fmt_currency(day_proj)}</strong> (daily) / <strong>{fmt_currency(week_proj)}</strong> (weekly)' if day_proj else 'N/A'}.
+</div>
+</div>"""
+
+    st.html(STREAMLIT_CSS + wins_html)
+
+    # Top open-pipeline use cases
+    if wins_top5:
+        st.markdown(f"#### Top Open-Pipeline Use Cases (Wins)")
+        rows = []
+        for uc in wins_top5:
+            rows.append({
+                "Account": safe_str(uc.get("ACCOUNT_NAME", "")),
+                "Use Case": safe_str(uc.get("USE_CASE_NAME", "")),
+                "ACV": fmt_currency(safe_float(uc.get("USE_CASE_EACV", 0))),
+                "Stage": safe_str(uc.get("USE_CASE_STAGE", "")),
+                "Days in Stage": safe_int(uc.get("DAYS_IN_STAGE", 0)),
+                "Region": safe_str(uc.get("REGION_NAME", "")),
+                "Risk": safe_str(uc.get("USE_CASE_RISK", "")),
+            })
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
 
 def render_golives_tab(data):
@@ -3558,19 +4680,30 @@ def _render_retrospective(retro_data, quarter_label):
 
 def render_forecast_tab(data):
     fiscal = data["fiscal"]
-    forecast_analysis = data["forecast_analysis"]
-    forecasts = data["forecasts"]
-    deployed = data["deployed"]
-    day_number = safe_int(fiscal["DAY_NUMBER"])
-    week_number = safe_int(fiscal["WEEK_NUMBER"])
-    forecast_html = _build_forecast_tab(forecast_analysis, forecasts, deployed, day_number, week_number)
-    st.html(STREAMLIT_CSS + forecast_html)
+    fa_golives_tab, fa_wins_tab = st.tabs(["Go-Lives Forecast", "Wins Forecast"])
 
-    retro = forecast_analysis.get("retrospective")
-    if retro:
-        fy = safe_int(fiscal["FISCAL_YEAR"])
-        q = safe_str(fiscal["FISCAL_QUARTER"])
-        _render_retrospective(retro, f"FY{fy % 100}-{q}")
+    with fa_golives_tab:
+        forecast_analysis = data["forecast_analysis"]
+        forecasts = data["forecasts"]
+        deployed = data["deployed"]
+        day_number = safe_int(fiscal["DAY_NUMBER"])
+        week_number = safe_int(fiscal["WEEK_NUMBER"])
+        forecast_html = _build_forecast_tab(forecast_analysis, forecasts, deployed, day_number, week_number)
+        st.html(STREAMLIT_CSS + forecast_html)
+        retro = forecast_analysis.get("retrospective")
+        if retro:
+            fy = safe_int(fiscal["FISCAL_YEAR"])
+            q = safe_str(fiscal["FISCAL_QUARTER"])
+            _render_retrospective(retro, f"FY{fy % 100}-{q}")
+
+    with fa_wins_tab:
+        wfa = data.get("wins_forecast_analysis") or {}
+        wins_forecast = data.get("wins_forecast") or {}
+        day_number = safe_int(fiscal["DAY_NUMBER"])
+        week_number = safe_int(fiscal["WEEK_NUMBER"])
+        wins_html = _build_wins_forecast_tab_html(wfa, wins_forecast, day_number, week_number)
+        st.html(STREAMLIT_CSS + wins_html)
+
 
 
 # =============================================================================
@@ -3670,12 +4803,14 @@ def main():
     else:
         st.markdown(f"**{selected_quarter_label} ({quarter})** ({qstart} - {qend}) | **{days_remaining} days remaining**")
 
-    tab_script, tab_golives, tab_forecast = st.tabs([
-        "Script", "Use Case Go-Lives", "Forecast Analysis",
+    tab_script, tab_wins, tab_golives, tab_forecast = st.tabs([
+        "Script", "Use Case Wins", "Use Case Go-Lives", "Forecast Analysis",
     ])
 
     with tab_script:
         render_script_tab(data)
+    with tab_wins:
+        render_wins_tab(data)
     with tab_golives:
         render_golives_tab(data)
     with tab_forecast:
