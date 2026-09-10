@@ -1,0 +1,1388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Q4 FY27 Forecast — AMSExpansion</title>
+<style>
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f2f5; color: #1a1a2e; padding: 24px; }
+h1 { font-size: 1.8em; color: #1a1a2e; margin-bottom: 4px; }
+.subtitle { color: #666; font-size: 0.95em; margin-bottom: 24px; }
+.badge { display: inline-block; background: #29B5E8; color: white; padding: 3px 10px; border-radius: 12px; font-size: 0.8em; font-weight: 600; margin-left: 8px; vertical-align: middle; }
+
+.summary-banner { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-bottom: 24px; }
+.banner-card { background: white; border-radius: 10px; padding: 18px; box-shadow: 0 2px 8px rgba(0,0,0,0.07); text-align: center; border-top: 4px solid #ddd; }
+.banner-card.commit  { border-top-color: #e67e22; }
+.banner-card.ml      { border-top-color: #29B5E8; }
+.banner-card.stretch { border-top-color: #28a745; }
+.banner-card.target  { border-top-color: #6f42c1; }
+.banner-card.pipeline{ border-top-color: #1a1a2e; }
+.banner-label { font-size: 0.72em; text-transform: uppercase; letter-spacing: 0.5px; color: #888; margin-bottom: 6px; }
+.banner-value { font-size: 2em; font-weight: 700; }
+.banner-value.commit  { color: #e67e22; }
+.banner-value.ml      { color: #29B5E8; }
+.banner-value.stretch { color: #28a745; }
+.banner-value.target  { color: #6f42c1; }
+.banner-sub { font-size: 0.78em; color: #888; margin-top: 4px; }
+
+.progress-wrap { margin: 0 0 24px 0; background: white; border-radius: 10px; padding: 18px 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.07); }
+.progress-wrap h3 { font-size: 0.85em; text-transform: uppercase; letter-spacing: 0.5px; color: #888; margin-bottom: 12px; }
+.progress-track { height: 28px; background: #f0f2f5; border-radius: 6px; position: relative; overflow: visible; margin-bottom: 8px; }
+.progress-bar { height: 100%; border-radius: 6px; display: flex; align-items: center; padding-left: 10px; font-size: 0.82em; font-weight: 600; color: white; }
+.bar-commit  { background: #e67e22; }
+.bar-ml      { background: #29B5E8; }
+.bar-stretch { background: #28a745; }
+.target-line { position: absolute; top: -6px; bottom: -6px; width: 3px; background: #6f42c1; border-radius: 2px; }
+.target-label { position: absolute; top: -22px; font-size: 0.75em; color: #6f42c1; font-weight: 700; white-space: nowrap; transform: translateX(-50%); }
+.progress-legend { display: flex; gap: 20px; font-size: 0.78em; color: #666; margin-top: 8px; }
+.leg-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+
+details.model-breakdown { background: white; border-radius: 10px; padding: 0; box-shadow: 0 2px 8px rgba(0,0,0,0.07); margin-bottom: 24px; }
+details.model-breakdown summary { padding: 16px 24px; cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px; }
+details.model-breakdown summary::-webkit-details-marker { display: none; }
+details.model-breakdown summary::before { content: '▶'; font-size: 0.7em; color: #888; transition: transform 0.2s; flex-shrink: 0; }
+details.model-breakdown[open] summary::before { transform: rotate(90deg); }
+details.model-breakdown summary h3 { margin: 0; font-size: 0.95em; color: #1a1a2e; }
+details.model-breakdown summary:hover { background: #f8f9fa; border-radius: 10px; }
+details.model-breakdown > *:not(summary) { padding: 0 24px 20px; }
+.model-table { width: 100%; border-collapse: collapse; font-size: 0.88em; }
+.model-table th { background: #1a1a2e; color: white; padding: 10px 14px; text-align: left; }
+.model-table th.num { text-align: right; }
+.model-table td { padding: 10px 14px; border-bottom: 1px solid #eee; vertical-align: top; }
+.model-table td.num { text-align: right; font-family: 'SF Mono', Consolas, monospace; }
+.model-table tr:last-child td { border-bottom: none; font-weight: 700; background: #f0f8fd; }
+
+.weight-box { background: #f8f9fa; border-radius: 8px; padding: 12px 16px; margin-top: 12px; font-size: 0.82em; }
+.weight-box strong { color: #1a1a2e; }
+.weight-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 10px; }
+.weight-item { text-align: center; background: white; border-radius: 6px; padding: 8px; border: 1px solid #eee; }
+.weight-label { font-size: 0.78em; color: #888; margin-bottom: 3px; }
+.weight-value { font-weight: 700; font-size: 1.05em; }
+
+.defs-box { background: white; border-radius: 10px; padding: 16px 22px; box-shadow: 0 2px 8px rgba(0,0,0,0.07); margin-bottom: 18px; display: flex; gap: 32px; flex-wrap: wrap; }
+.defs-box .def-item { font-size: 0.8em; color: #555; }
+.defs-box .def-term { font-weight: 700; color: #1a1a2e; }
+
+.region-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.region-card { background: white; border-radius: 10px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.07); border-left: 5px solid #29B5E8; }
+.region-card.risk-flag { border-left-color: #e74c3c; }
+.region-name { font-size: 1.1em; font-weight: 700; color: #1a1a2e; margin-bottom: 3px; }
+.region-pipeline { font-size: 0.85em; color: #666; margin-bottom: 12px; }
+
+.phase-bar-wrap { margin-bottom: 10px; }
+.phase-bar-track { display: flex; height: 20px; border-radius: 4px; overflow: hidden; }
+.phase-imp   { background: #17a2b8; }
+.phase-tw    { background: #ffc107; }
+.phase-pretw { background: #e9ecef; }
+.phase-s6    { background: #28a745; }
+.phase-legend { display: flex; gap: 12px; margin-top: 5px; font-size: 0.75em; color: #666; }
+.phase-legend span::before { content: '●'; margin-right: 3px; }
+.phase-imp-leg::before   { color: #17a2b8; }
+.phase-tw-leg::before    { color: #ffc107; }
+.phase-pretw-leg::before { color: #aaa; }
+.phase-s6-leg::before    { color: #28a745; }
+
+.model-mini { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-bottom: 10px; font-size: 0.78em; }
+.model-mini-item { background: #f8f9fa; border-radius: 4px; padding: 5px 8px; text-align: center; }
+.model-mini-label { color: #888; font-size: 0.82em; margin-bottom: 2px; }
+.model-mini-value { font-weight: 700; color: #1a1a2e; }
+.model-mini-value.m4 { color: #27ae60; }
+
+.scenario-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+.scenario-box { text-align: center; border-radius: 6px; padding: 10px 8px; }
+.scenario-box.commit  { background: #fef9f5; border: 1px solid #f0a070; }
+.scenario-box.ml      { background: #f0fdf4; border: 1px solid #86efac; }
+.scenario-box.stretch { background: #f0f8fd; border: 1px solid #7bd3f0; }
+.scenario-label { font-size: 0.68em; text-transform: uppercase; letter-spacing: 0.4px; color: #888; margin-bottom: 4px; }
+.scenario-value { font-size: 1.3em; font-weight: 700; }
+.scenario-value.commit  { color: #e67e22; }
+.scenario-value.ml      { color: #16a34a; }
+.scenario-value.stretch { color: #1d8ab5; }
+
+.rvp-line { text-align: center; font-size: 0.78em; color: #888; margin-bottom: 10px; }
+.facts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; font-size: 0.8em; color: #444; padding-top: 10px; border-top: 1px solid #eee; }
+.fact-row { display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid #f5f5f5; }
+.fact-label { color: #888; }
+.fact-value { font-weight: 600; color: #1a1a2e; }
+.fact-value.warn    { color: #c0392b; }
+.fact-value.ok      { color: #27ae60; }
+.fact-value.neutral { color: #555; }
+
+.locked-bar { display: flex; align-items: center; gap: 8px; font-size: 0.8em; margin-bottom: 8px; }
+.locked-label { color: #666; white-space: nowrap; }
+.locked-track { flex: 1; height: 8px; background: #e9ecef; border-radius: 4px; overflow: hidden; }
+.locked-fill { height: 100%; background: #28a745; border-radius: 4px; }
+.locked-value { color: #28a745; font-weight: 600; white-space: nowrap; }
+
+.methodology { background: white; border-radius: 10px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.07); margin-top: 24px; }
+.methodology h3 { font-size: 0.9em; color: #1a1a2e; margin-bottom: 12px; }
+.method-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.method-box { background: #f8f9fa; border-radius: 6px; padding: 12px; font-size: 0.8em; }
+.method-box h4 { margin-bottom: 6px; font-size: 0.85em; }
+.method-box p { color: #555; line-height: 1.5; }
+.caution { background: #fff8f0; border-left: 3px solid #e67e22; padding: 10px 14px; border-radius: 4px; font-size: 0.8em; color: #555; margin-top: 12px; line-height: 1.5; }
+.insight { background: #e8f8e8; border-left: 3px solid #27ae60; padding: 10px 14px; border-radius: 4px; font-size: 0.8em; color: #2c5f2e; margin-top: 12px; line-height: 1.5; }
+.section-title { font-size: 1.1em; font-weight: 700; color: #1a1a2e; margin: 24px 0 10px; }
+.stale-tag { font-size: 0.72em; background: #fff3cd; color: #856404; padding: 2px 6px; border-radius: 4px; margin-left: 4px; font-weight: 600; }
+.risk-tag  { font-size: 0.72em; background: #f8d7da; color: #842029; padding: 2px 6px; border-radius: 4px; margin-left: 4px; font-weight: 600; }
+.over-tag  { font-size: 0.72em; background: #d4edda; color: #155724; padding: 2px 6px; border-radius: 4px; margin-left: 4px; font-weight: 600; }
+
+/* ── District Tabs ── */
+.tab-wrap { background: white; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.07); margin-top: 28px; overflow: hidden; }
+.tab-bar  { display: flex; border-bottom: 2px solid #e9ecef; background: #f8f9fa; }
+.tab-btn  { padding: 14px 28px; font-size: 0.92em; font-weight: 600; color: #888; cursor: pointer; border: none; background: none; border-bottom: 3px solid transparent; margin-bottom: -2px; transition: color .15s, border-color .15s; }
+.tab-btn:hover { color: #1a1a2e; }
+.tab-btn.active { color: #29B5E8; border-bottom-color: #29B5E8; }
+.tab-content { display: none; padding: 20px 24px 24px; }
+.tab-content.active { display: block; }
+.tab-subtitle { font-size: 0.82em; color: #888; margin-bottom: 16px; }
+.district-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.district-card { background: #f8f9fa; border-radius: 8px; padding: 16px; border-top: 3px solid #29B5E8; }
+.district-card.risk-flag { border-top-color: #e74c3c; }
+.district-name  { font-size: 0.95em; font-weight: 700; color: #1a1a2e; margin-bottom: 2px; }
+.district-meta  { font-size: 0.75em; color: #888; margin-bottom: 10px; }
+.district-m4    { text-align: center; font-size: 1.6em; font-weight: 700; color: #27ae60; margin: 8px 0 4px; }
+.district-m4-label { text-align: center; font-size: 0.68em; text-transform: uppercase; letter-spacing: 0.4px; color: #888; margin-bottom: 10px; }
+.district-mini  { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; font-size: 0.75em; margin-bottom: 10px; }
+.district-mini-item { background: white; border-radius: 4px; padding: 4px 6px; text-align: center; }
+.district-mini-label { color: #aaa; font-size: 0.82em; }
+.district-mini-value { font-weight: 600; color: #1a1a2e; }
+.district-flags { font-size: 0.73em; color: #888; border-top: 1px solid #e9ecef; padding-top: 8px; display: flex; flex-direction: column; gap: 3px; }
+.district-flags span { display: flex; justify-content: space-between; }
+.district-flags .warn { color: #c0392b; font-weight: 600; }
+.district-flags .ok   { color: #27ae60; font-weight: 600; }
+
+</style>
+</head>
+<body>
+
+<h1>Q4 FY27 Forecast Analysis <span class="badge">AMSExpansion</span></h1>
+<p class="subtitle">As of September 9, 2026 &mdash; 53 days before Q4 FY27 opens (Nov 1, 2026 &ndash; Jan 31, 2027) &mdash; Mark Fleming GVP</p>
+
+<!-- Summary Banner -->
+<div class="summary-banner">
+  <div class="banner-card pipeline">
+    <div class="banner-label">Total Q4 FY27 Open Pipeline</div>
+    <div class="banner-value" style="color:#1a1a2e">$256.2M</div>
+    <div class="banner-sub">-6% YoY &mdash; Q4 FY26 open pipeline was $271.7M at the same point in its cycle (53 days pre-open, Sep 9, 2025)</div>
+  </div>
+  <div class="banner-card commit">
+    <div class="banner-label">Commit (M4)</div>
+    <div class="banner-value commit">$95.3M</div>
+    <div class="banner-sub">Weighted Ensemble: 56% Pipeline Risk + 44% Stage Conversion (Pacing N/A &mdash; weight redistributed)</div>
+  </div>
+  <div class="banner-card ml">
+    <div class="banner-label">Most Likely (M4)</div>
+    <div class="banner-value ml">$196.1M</div>
+    <div class="banner-sub">Pipeline Risk: $204.4M &bull; Stage Conv: $185.6M &bull; Ensemble: $196.1M</div>
+  </div>
+  <div class="banner-card stretch">
+    <div class="banner-label">Stretch (M4)</div>
+    <div class="banner-value stretch">$256.2M</div>
+    <div class="banner-sub">Pipeline Risk: $256.2M &bull; Stage Conv: $256.2M &bull; Ensemble: $256.2M</div>
+  </div>
+  <div class="banner-card target">
+    <div class="banner-label">Q4 FY27 Target</div>
+    <div class="banner-value target">$189.8M</div>
+    <div class="banner-sub">M4 ML = 103% of target &bull; Q4 FY26 actual: $148.9M</div>
+  </div>
+</div>
+
+<!-- Progress Bars -->
+<div class="progress-wrap">
+  <h3>M4 Ensemble vs Target ($189.8M)</h3>
+  <div style="position:relative; padding-top: 28px;">
+    <div class="progress-track" style="margin-bottom:8px;">
+      <div class="progress-bar bar-stretch" style="width:100.0%">Stretch: $256.2M (135% of target)</div>
+      <div class="target-line" style="left:74.1%"><div class="target-label">Target $189.8M</div></div>
+    </div>
+    <div class="progress-track" style="margin-bottom:8px;">
+      <div class="progress-bar bar-ml" style="width:100.0%">Most Likely: $196.1M (103%)</div>
+      <div class="target-line" style="left:74.1%"></div>
+    </div>
+    <div class="progress-track" style="margin-bottom:8px;">
+      <div class="progress-bar bar-commit" style="width:50.2%">Commit: $95.3M (50%)</div>
+      <div class="target-line" style="left:74.1%"></div>
+    </div>
+  </div>
+  <div class="progress-legend">
+    <span><span class="leg-dot" style="background:#e67e22"></span>Commit (M4)</span>
+    <span><span class="leg-dot" style="background:#29B5E8"></span>Most Likely (M4)</span>
+    <span><span class="leg-dot" style="background:#28a745"></span>Stretch (M4)</span>
+    <span><span class="leg-dot" style="background:#6f42c1"></span>Target</span>
+  </div>
+</div>
+
+<!-- Pipeline Composition -->
+<div style="background:white;border-radius:10px;padding:18px 24px;box-shadow:0 2px 8px rgba(0,0,0,0.07);margin-bottom:24px;">
+  <h3 style="font-size:0.85em;text-transform:uppercase;letter-spacing:0.5px;color:#888;margin-bottom:14px;">Pipeline Composition &mdash; AMSExpansion ($256.2M)</h3>
+
+  <!-- Stacked bar -->
+  <div style="display:flex;height:28px;border-radius:6px;overflow:hidden;margin-bottom:8px;">
+    <div style="width:0.7%;background:#28a745;" title="Stage 6: $1.7M"></div>
+    <div style="width:16.4%;background:#17a2b8;" title="IMP (fresh): $42.1M"></div>
+    <div style="width:14.6%;background:#0d6980;" title="IMP (stale >79d): $37.4M"></div>
+    <div style="width:13.2%;background:#ffc107;" title="TW (fresh): $33.8M"></div>
+    <div style="width:6.4%;background:#b38600;" title="TW (stale >104d): $16.3M"></div>
+    <div style="width:48.7%;background:#e9ecef;" title="Pre-TW: $124.8M"></div>
+  </div>
+  <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:0.76em;color:#666;margin-bottom:16px;">
+    <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#28a745;margin-right:4px;vertical-align:middle;"></span>Stage 6: $1.7M</span>
+    <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#17a2b8;margin-right:4px;vertical-align:middle;"></span>IMP (fresh): $42.1M</span>
+    <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#0d6980;margin-right:4px;vertical-align:middle;"></span>IMP (stale &gt;79d): $37.4M</span>
+    <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#ffc107;margin-right:4px;vertical-align:middle;"></span>TW (fresh): $33.8M</span>
+    <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#b38600;margin-right:4px;vertical-align:middle;"></span>TW (stale &gt;104d): $16.3M</span>
+    <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#e9ecef;margin-right:4px;vertical-align:middle;border:1px solid #ccc;"></span>Pre-TW: $124.8M</span>
+  </div>
+
+  <!-- Metric cards -->
+  <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;">
+    <div style="background:#f8f9fa;border-radius:8px;padding:14px;text-align:center;">
+      <div style="font-size:0.7em;text-transform:uppercase;color:#888;margin-bottom:4px;">IMP (Stage 5)</div>
+      <div style="font-size:1.5em;font-weight:700;color:#17a2b8;">$79.5M</div>
+      <div style="font-size:0.75em;color:#666;margin-top:3px;">31% of pipeline</div>
+    </div>
+    <div style="background:#f8f9fa;border-radius:8px;padding:14px;text-align:center;">
+      <div style="font-size:0.7em;text-transform:uppercase;color:#888;margin-bottom:4px;">TW (Stage 4)</div>
+      <div style="font-size:1.5em;font-weight:700;color:#ffc107;">$50.1M</div>
+      <div style="font-size:0.75em;color:#666;margin-top:3px;">20% of pipeline</div>
+    </div>
+    <div style="background:#f8f9fa;border-radius:8px;padding:14px;text-align:center;">
+      <div style="font-size:0.7em;text-transform:uppercase;color:#888;margin-bottom:4px;">Pre-TW (Stage 1-3)</div>
+      <div style="font-size:1.5em;font-weight:700;color:#555;">$124.8M</div>
+      <div style="font-size:0.75em;color:#666;margin-top:3px;">49% of pipeline</div>
+    </div>
+    <div style="background:#fff8f0;border-radius:8px;padding:14px;text-align:center;border:1px solid #f0a070;">
+      <div style="font-size:0.7em;text-transform:uppercase;color:#c0392b;margin-bottom:4px;">Stale IMP (&gt;79d)</div>
+      <div style="font-size:1.5em;font-weight:700;color:#c0392b;">$37.4M</div>
+      <div style="font-size:0.75em;color:#888;margin-top:3px;">47% of IMP &bull; 176 UCs</div>
+    </div>
+    <div style="background:#f8f9fa;border-radius:8px;padding:14px;text-align:center;border:1px solid #f0a070;background:#fff8f0;">
+      <div style="font-size:0.7em;text-transform:uppercase;color:#c0392b;margin-bottom:4px;">Stale TW (&gt;104d)</div>
+      <div style="font-size:1.5em;font-weight:700;color:#c0392b;">$16.3M</div>
+      <div style="font-size:0.75em;color:#888;margin-top:3px;">33% of TW &bull; 65 UCs</div>
+    </div>
+  </div>
+
+  <div style="margin-top:12px;font-size:0.78em;color:#888;display:flex;gap:20px;">
+    <span>Stage 6 (locked): <strong style="color:#28a745;">$1.7M</strong></span>
+    <span>No next steps (Stage 4+): <strong style="color:#c0392b;">44 UCs</strong></span>
+  </div>
+</div>
+
+<!-- MaxIQ tie-out -->
+<details class="model-breakdown" open>
+  <summary><h3>MaxIQ Tie-Out &mdash; Q4 FY27</h3></summary>
+  <p style="font-size:0.8em;color:#666;margin:6px 0 10px;">
+    Source of truth: <code>SALES.REPORTING.PEAK_FORECAST_CALLS_PIPELINE_TARGETS</code>
+    (Mark Fleming, 2027-Q4, <code>FUNCTION='GVP'</code> rollup row). Open pipeline counts
+    Stage 1&ndash;6 only &mdash; Stage 0 is unqualified, Stage 7 is deployed, Stage 8 is lost.
+    <br><strong>Reading a MaxIQ view a week behind is the usual source of a phantom gap</strong>
+    &mdash; the prior-week column is shown so either view can be reconciled. Note also that
+    summing MaxIQ SubRegion Lead rows undercounts the GVP rollup, because a few sub-regions
+    have no assigned lead.
+  </p>
+  <table class="model-table">
+    <thead>
+      <tr><th>Pipeline measure</th><th class="num">This report</th>
+          <th class="num">MaxIQ (current)</th><th class="num">Delta</th>
+          <th class="num">MaxIQ (prior wk)</th><th class="num">WoW</th></tr>
+    </thead>
+    <tbody><tr><td>Open pipeline (Going Live)</td><td class='num'>$256.2M</td><td class='num'>$256.3M</td><td class="num" style="color:#27ae60;font-weight:600;">-0.1M (-0.0%) &#10003;</td><td class='num' style='color:#888;'>$248.5M</td><td class="num" style="color:#27ae60;">+7.9M</td></tr><tr><td>Deployed / banked (Live)</td><td class='num'>$0.0M</td><td class='num'>&mdash;</td><td class="num" style="color:#bbb;">&mdash;</td><td class='num' style='color:#888;'>&mdash;</td><td class="num" style="color:#bbb;">&mdash;</td></tr><tr><td>Wins booked (Won)</td><td class='num'>$1.4M</td><td class='num'>$1.4M</td><td class="num" style="color:#27ae60;font-weight:600;">+0.0M (+0.0%) &#10003;</td><td class='num' style='color:#888;'>$1.2M</td><td class="num" style="color:#27ae60;">+0.2M</td></tr><tr><td>Target</td><td class='num'>$189.8M</td><td class='num'>$189.8M</td><td class="num" style="color:#27ae60;font-weight:600;">-0.0M (-0.0%) &#10003;</td><td class='num' style='color:#888;'>&mdash;</td><td class="num" style="color:#bbb;">&mdash;</td></tr></tbody>
+  </table>
+  <table class="model-table" style="margin-top:14px;">
+    <thead>
+      <tr><th>Forecast call</th><th class="num">Model (M4)</th>
+          <th class="num">MaxIQ (current)</th><th class="num">Delta</th>
+          <th class="num">MaxIQ (prior wk)</th><th class="num">WoW</th></tr>
+    </thead>
+    <tbody><tr><td>Commit</td><td class='num'>$95.3M</td><td class='num'>$100.0M</td><td class="num" style="color:#e67e22;font-weight:600;">-4.7M (-4.7%) </td><td class='num' style='color:#888;'>$100.0M</td><td class="num" style="color:#27ae60;">+0.0M</td></tr><tr><td>Most Likely</td><td class='num'>$196.1M</td><td class='num'>$115.0M</td><td class="num" style="color:#c0392b;font-weight:600;">+81.1M (+70.5%) &#9888;</td><td class='num' style='color:#888;'>$115.0M</td><td class="num" style="color:#27ae60;">+0.0M</td></tr><tr><td>Stretch / Best Case</td><td class='num'>$256.2M</td><td class='num'>$165.0M</td><td class="num" style="color:#c0392b;font-weight:600;">+91.2M (+55.3%) &#9888;</td><td class='num' style='color:#888;'>$165.0M</td><td class="num" style="color:#27ae60;">+0.0M</td></tr></tbody>
+  </table>
+  <div class="caution" style="margin-top:10px;"><strong>Forecast call diverges from MaxIQ:</strong> the model's Most Likely is $196.1M against MaxIQ's $115.0M &mdash; a +81M gap. Pre-quarter MaxIQ calls are typically conservative because reps have not committed yet, while the model grosses up for pipeline not yet created. Treat the range, not either endpoint, as the answer.</div>
+</details>
+
+<!-- Model Breakdown -->
+<details class="model-breakdown" open>
+  <summary><h3>Model Breakdown &mdash; AMSExpansion Total</h3></summary>
+  <table class="model-table">
+    <thead>
+      <tr>
+        <th>Model</th><th>Description</th>
+        <th class="num">Error (backtest)</th><th class="num">Weight</th>
+        <th class="num">Commit</th><th class="num">Most Likely</th><th class="num">Stretch</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>M1 &mdash; Pipeline Risk</strong></td>
+        <td>Risk threshold classification against 92 days of runway (full quarter). Stage 6 + all Stage 5 (pass 79d threshold) + Stage 4 good + Pre-TW good. Binary good/at-risk. Deployed ACV floors all three cases.</td>
+        <td class="num">22.8% avg<br><span style="font-size:0.8em;color:#888;">5.2% / 25.7% / 37.5%</span></td>
+        <td class="num" style="color:#e67e22;font-weight:600;">56.0%</td>
+        <td class="num">$81.2M</td>
+        <td class="num">$204.4M</td>
+        <td class="num">$256.2M</td>
+      </tr>
+      <tr>
+        <td><strong>M2 &mdash; Historical Pacing</strong></td>
+        <td>Requires deployed ACV as the denominator. Deployed = $0 until Q4 FY27 opens Nov 1. Weight redistributed to M1/M3.</td>
+        <td class="num" style="color:#bbb;">&mdash;</td>
+        <td class="num" style="color:#bbb;font-weight:600;">0.0%</td>
+        <td class="num" style="color:#bbb;">N/A</td>
+        <td class="num" style="color:#bbb;">N/A</td>
+        <td class="num" style="color:#bbb;">N/A</td>
+      </tr>
+      <tr>
+        <td><strong>M3 &mdash; Stage Conversion</strong></td>
+        <td>IMP 44.0% + TW 27.7% + Pre-TW 14.8%, then &divide; (1 &minus; 63.3%) for new pipeline uplift. Commit uses min rates (IMP 33.7%, TW 21.9%, Pre-TW 10.4%) &divide; (1 &minus; 54.7%). Stretch = total pipeline (capped). Rates from 4Q backtest (Q3/Q4 FY26 + Q1/Q2 FY27).</td>
+        <td class="num">21.5% avg (LOO)<br><span style="font-size:0.8em;color:#888;">27.2% / 20.2% / 17.0%</span></td>
+        <td class="num" style="color:#1d8ab5;font-weight:600;">44.0%</td>
+        <td class="num">$113.3M</td>
+        <td class="num">$185.6M</td>
+        <td class="num">$256.2M</td>
+      </tr>
+      <tr>
+        <td><strong>M4 &mdash; Weighted Ensemble</strong></td>
+        <td>Inverse-error weighted blend of M1 &amp; M3. M1 weight = 1/22.8% &divide; (1/22.8% + 1/21.5%) = 56.0%. M3 weight = 44.0%. M2 excluded (N/A pre-quarter). Applied consistently to all regions.</td>
+        <td class="num">&mdash;</td>
+        <td class="num" style="color:#27ae60;font-weight:600;">100%</td>
+        <td class="num" style="color:#e67e22;font-weight:700;">$95.3M</td>
+        <td class="num" style="color:#27ae60;font-weight:700;">$196.1M</td>
+        <td class="num" style="color:#1d8ab5;font-weight:700;">$256.2M</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="weight-box">
+    <strong>Backtest accuracy &mdash; 3 prior quarters at comparable horizon:</strong>
+    <div class="weight-grid">
+      <div class="weight-item"><div class="weight-label">Q3 FY26</div><div class="weight-value">M1: 5.2% &bull; M3: 27.2%</div></div>
+      <div class="weight-item"><div class="weight-label">Q4 FY26</div><div class="weight-value">M1: 25.7% &bull; M3: 20.2%</div></div>
+      <div class="weight-item"><div class="weight-label">Q1 FY27</div><div class="weight-value">M1: 37.5% &bull; M3: 17.0%</div></div>
+      <div class="weight-item" style="background:#f0f8fd;"><div class="weight-label">Avg error &rarr; Weight</div><div class="weight-value">M1: 22.8% &rarr; 56.0%<br>M3: 21.5% &rarr; 44.0%</div></div>
+    </div>
+  </div>
+</details>
+
+<div class="section-title">Regional Breakdown</div>
+
+<div class="defs-box">
+  <div class="def-item"><span class="def-term">Stale IMP:</span> Stage 5 with &gt;79 days in current stage (avg IMP-to-deploy = 79 days)</div>
+  <div class="def-item"><span class="def-term">Stale TW:</span> Stage 4 with &gt;104 days in current stage (avg TW-to-deploy = 104 days)</div>
+  <div class="def-item"><span class="def-term">No Next Steps:</span> Stage 4 or higher, next steps field empty</div>
+  <div class="def-item"><span class="def-term">Stage 6 Locked:</span> Implementation Complete, deployment confirmation pending</div>
+  <div class="def-item"><span class="def-term">YoY Pipeline:</span> Same calendar date one year prior (Sep 9, 2025)</div>
+  <div class="def-item"><span class="def-term">M4 = 56.0% M1 + 44.0% M3</span> (same weights applied to all regions)</div>
+</div>
+
+<div class="region-grid">
+
+  <div class="region-card">
+    <div class="region-name">NortheastExp <span class="over-tag">121% of target</span> <span class="stale-tag">&#9888; $5.4M Stale IMP</span></div>
+    <div class="region-pipeline">$56.1M total &bull; 241 open UCs &bull; IMP 16% / TW 27% / Pre-TW 56%</div>
+    <div class="phase-bar-wrap">
+      <div class="phase-bar-track">
+        <div class="phase-imp"   style="width:16.3%"></div>
+        <div class="phase-tw"    style="width:27.4%"></div>
+        <div class="phase-pretw" style="width:56.0%"></div>
+      </div>
+      <div class="phase-legend">
+        <span class="phase-imp-leg">IMP $9.2M</span>
+        <span class="phase-tw-leg">TW $15.4M</span>
+        <span class="phase-pretw-leg">Pre-TW $31.4M</span>
+      </div>
+    </div>
+    <div class="locked-bar">
+      <span class="locked-label">Stage 6 locked:</span>
+      <div class="locked-track"><div class="locked-fill" style="width:0.3%"></div></div>
+      <span class="locked-value" style="color:">$0.1M &bull; 1 UC</span>
+    </div>
+    <div class="model-mini">
+      <div class="model-mini-item"><div class="model-mini-label">M1 ML</div><div class="model-mini-value">$44.5M</div></div>
+      <div class="model-mini-item"><div class="model-mini-label">M3 ML</div><div class="model-mini-value">$35.4M</div></div>
+      <div class="model-mini-item"><div class="model-mini-label">M4 ML</div><div class="model-mini-value m4">$40.5M</div></div>
+    </div>
+    <div class="scenario-row">
+      <div class="scenario-box commit"><div class="scenario-label">M4 Commit</div><div class="scenario-value commit">$14.7M</div></div>
+      <div class="scenario-box ml"><div class="scenario-label">M4 Most Likely</div><div class="scenario-value ml">$40.5M</div></div>
+      <div class="scenario-box stretch"><div class="scenario-label">M4 Stretch</div><div class="scenario-value stretch">$56.1M</div></div>
+    </div>
+    <div class="rvp-line">RVP: <strong>Matt Moscoffian</strong> &bull; Target: <strong style="color:#6f42c1;">$33.4M</strong> &bull; M4 ML 121% of target &bull; Q4 FY26 actual: $29.9M</div>
+    <div class="facts-grid">
+      <div class="fact-row"><span class="fact-label">YoY pipeline (Q4 FY26)</span><span class="fact-value warn">$271.7M &rarr; $56.1M (-79%)</span></div>
+      <div class="fact-row"><span class="fact-label">Stale IMP (&gt;79d)</span><span class="fact-value warn">24 UCs / $5.4M</span></div>
+      <div class="fact-row"><span class="fact-label">Stale TW (&gt;104d)</span><span class="fact-value warn">16 UCs / $6.9M</span></div>
+      <div class="fact-row"><span class="fact-label">No next steps (Stage 4+)</span><span class="fact-value neutral">2 UCs</span></div>
+    </div>
+  </div>
+  <div class="region-card risk-flag">
+    <div class="region-name">USGrowthExp <span class="risk-tag">73% of target</span> <span class="stale-tag">&#9888; $6.8M Stale IMP</span></div>
+    <div class="region-pipeline">$39.2M total &bull; 175 open UCs &bull; IMP 40% / TW 17% / Pre-TW 43%</div>
+    <div class="phase-bar-wrap">
+      <div class="phase-bar-track">
+        <div class="phase-imp"   style="width:39.7%"></div>
+        <div class="phase-tw"    style="width:17.1%"></div>
+        <div class="phase-pretw" style="width:42.8%"></div>
+      </div>
+      <div class="phase-legend">
+        <span class="phase-imp-leg">IMP $15.6M</span>
+        <span class="phase-tw-leg">TW $6.7M</span>
+        <span class="phase-pretw-leg">Pre-TW $16.8M</span>
+      </div>
+    </div>
+    <div class="locked-bar">
+      <span class="locked-label">Stage 6 locked:</span>
+      <div class="locked-track"><div class="locked-fill" style="width:0.3%"></div></div>
+      <span class="locked-value" style="color:">$0.1M &bull; 1 UC</span>
+    </div>
+    <div class="model-mini">
+      <div class="model-mini-item"><div class="model-mini-label">M1 ML</div><div class="model-mini-value">$32.3M</div></div>
+      <div class="model-mini-item"><div class="model-mini-label">M3 ML</div><div class="model-mini-value">$30.7M</div></div>
+      <div class="model-mini-item"><div class="model-mini-label">M4 ML</div><div class="model-mini-value m4">$31.6M</div></div>
+    </div>
+    <div class="scenario-row">
+      <div class="scenario-box commit"><div class="scenario-label">M4 Commit</div><div class="scenario-value commit">$17.1M</div></div>
+      <div class="scenario-box ml"><div class="scenario-label">M4 Most Likely</div><div class="scenario-value ml">$31.6M</div></div>
+      <div class="scenario-box stretch"><div class="scenario-label">M4 Stretch</div><div class="scenario-value stretch">$39.2M</div></div>
+    </div>
+    <div class="rvp-line">RVP: <strong>Brian Daniels</strong> &bull; Target: <strong style="color:#6f42c1;">$43.5M</strong> &bull; M4 ML 73% of target &bull; Q4 FY26 actual: $25.0M</div>
+    <div class="facts-grid">
+      <div class="fact-row"><span class="fact-label">YoY pipeline (Q4 FY26)</span><span class="fact-value warn">$271.7M &rarr; $39.2M (-86%)</span></div>
+      <div class="fact-row"><span class="fact-label">Stale IMP (&gt;79d)</span><span class="fact-value warn">21 UCs / $6.8M</span></div>
+      <div class="fact-row"><span class="fact-label">Stale TW (&gt;104d)</span><span class="fact-value warn">9 UCs / $1.7M</span></div>
+      <div class="fact-row"><span class="fact-label">No next steps (Stage 4+)</span><span class="fact-value warn">10 UCs</span></div>
+    </div>
+  </div>
+  <div class="region-card">
+    <div class="region-name">CentralExp <span class="over-tag">109% of target</span> <span class="stale-tag">&#9888; $2.6M Stale IMP</span></div>
+    <div class="region-pipeline">$36.8M total &bull; 209 open UCs &bull; IMP 27% / TW 18% / Pre-TW 54%</div>
+    <div class="phase-bar-wrap">
+      <div class="phase-bar-track">
+        <div class="phase-imp"   style="width:27.4%"></div>
+        <div class="phase-tw"    style="width:17.7%"></div>
+        <div class="phase-pretw" style="width:53.7%"></div>
+      </div>
+      <div class="phase-legend">
+        <span class="phase-imp-leg">IMP $10.1M</span>
+        <span class="phase-tw-leg">TW $6.5M</span>
+        <span class="phase-pretw-leg">Pre-TW $19.8M</span>
+      </div>
+    </div>
+    <div class="locked-bar">
+      <span class="locked-label">Stage 6 locked:</span>
+      <div class="locked-track"><div class="locked-fill" style="width:1.9%"></div></div>
+      <span class="locked-value" style="color:">$0.5M &bull; 2 UCs</span>
+    </div>
+    <div class="model-mini">
+      <div class="model-mini-item"><div class="model-mini-label">M1 ML</div><div class="model-mini-value">$26.2M</div></div>
+      <div class="model-mini-item"><div class="model-mini-label">M3 ML</div><div class="model-mini-value">$25.5M</div></div>
+      <div class="model-mini-item"><div class="model-mini-label">M4 ML</div><div class="model-mini-value m4">$25.9M</div></div>
+    </div>
+    <div class="scenario-row">
+      <div class="scenario-box commit"><div class="scenario-label">M4 Commit</div><div class="scenario-value commit">$12.7M</div></div>
+      <div class="scenario-box ml"><div class="scenario-label">M4 Most Likely</div><div class="scenario-value ml">$25.9M</div></div>
+      <div class="scenario-box stretch"><div class="scenario-label">M4 Stretch</div><div class="scenario-value stretch">$36.8M</div></div>
+    </div>
+    <div class="rvp-line">RVP: <strong>Jeff LaCamera</strong> &bull; Target: <strong style="color:#6f42c1;">$23.7M</strong> &bull; M4 ML 109% of target &bull; Q4 FY26 actual: $19.5M</div>
+    <div class="facts-grid">
+      <div class="fact-row"><span class="fact-label">YoY pipeline (Q4 FY26)</span><span class="fact-value warn">$271.7M &rarr; $36.8M (-86%)</span></div>
+      <div class="fact-row"><span class="fact-label">Stale IMP (&gt;79d)</span><span class="fact-value warn">19 UCs / $2.6M</span></div>
+      <div class="fact-row"><span class="fact-label">Stale TW (&gt;104d)</span><span class="fact-value warn">4 UCs / $0.7M</span></div>
+      <div class="fact-row"><span class="fact-label">No next steps (Stage 4+)</span><span class="fact-value neutral">1 UCs</span></div>
+    </div>
+  </div>
+  <div class="region-card">
+    <div class="region-name">SoutheastExp <span class="over-tag">128% of target</span> <span class="stale-tag">&#9888; $6.9M Stale IMP</span> <span class="risk-tag">No Stage 6</span></div>
+    <div class="region-pipeline">$33.9M total &bull; 130 open UCs &bull; IMP 39% / TW 18% / Pre-TW 44%</div>
+    <div class="phase-bar-wrap">
+      <div class="phase-bar-track">
+        <div class="phase-imp"   style="width:38.6%"></div>
+        <div class="phase-tw"    style="width:17.7%"></div>
+        <div class="phase-pretw" style="width:43.7%"></div>
+      </div>
+      <div class="phase-legend">
+        <span class="phase-imp-leg">IMP $13.1M</span>
+        <span class="phase-tw-leg">TW $6.0M</span>
+        <span class="phase-pretw-leg">Pre-TW $14.8M</span>
+      </div>
+    </div>
+    <div class="locked-bar">
+      <span class="locked-label">Stage 6 locked:</span>
+      <div class="locked-track"><div class="locked-fill" style="width:0.0%"></div></div>
+      <span class="locked-value" style="color:#dc3545">$0.0M &bull; 0 UCs</span>
+    </div>
+    <div class="model-mini">
+      <div class="model-mini-item"><div class="model-mini-label">M1 ML</div><div class="model-mini-value">$24.4M</div></div>
+      <div class="model-mini-item"><div class="model-mini-label">M3 ML</div><div class="model-mini-value">$26.2M</div></div>
+      <div class="model-mini-item"><div class="model-mini-label">M4 ML</div><div class="model-mini-value m4">$25.2M</div></div>
+    </div>
+    <div class="scenario-row">
+      <div class="scenario-box commit"><div class="scenario-label">M4 Commit</div><div class="scenario-value commit">$14.4M</div></div>
+      <div class="scenario-box ml"><div class="scenario-label">M4 Most Likely</div><div class="scenario-value ml">$25.2M</div></div>
+      <div class="scenario-box stretch"><div class="scenario-label">M4 Stretch</div><div class="scenario-value stretch">$33.9M</div></div>
+    </div>
+    <div class="rvp-line">RVP: <strong>Adrian Tarquinio</strong> &bull; Target: <strong style="color:#6f42c1;">$19.7M</strong> &bull; M4 ML 128% of target &bull; Q4 FY26 actual: $18.9M</div>
+    <div class="facts-grid">
+      <div class="fact-row"><span class="fact-label">YoY pipeline (Q4 FY26)</span><span class="fact-value warn">$271.7M &rarr; $33.9M (-88%)</span></div>
+      <div class="fact-row"><span class="fact-label">Stale IMP (&gt;79d)</span><span class="fact-value warn">20 UCs / $6.9M</span></div>
+      <div class="fact-row"><span class="fact-label">Stale TW (&gt;104d)</span><span class="fact-value warn">11 UCs / $3.2M</span></div>
+      <div class="fact-row"><span class="fact-label">No next steps (Stage 4+)</span><span class="fact-value neutral">2 UCs</span></div>
+    </div>
+  </div>
+  <div class="region-card">
+    <div class="region-name">NorthwestExp <span class="over-tag">124% of target</span> <span class="stale-tag">&#9888; $2.9M Stale IMP</span></div>
+    <div class="region-pipeline">$33.7M total &bull; 123 open UCs &bull; IMP 23% / TW 13% / Pre-TW 62%</div>
+    <div class="phase-bar-wrap">
+      <div class="phase-bar-track">
+        <div class="phase-imp"   style="width:23.2%"></div>
+        <div class="phase-tw"    style="width:13.1%"></div>
+        <div class="phase-pretw" style="width:62.2%"></div>
+      </div>
+      <div class="phase-legend">
+        <span class="phase-imp-leg">IMP $7.8M</span>
+        <span class="phase-tw-leg">TW $4.4M</span>
+        <span class="phase-pretw-leg">Pre-TW $21.0M</span>
+      </div>
+    </div>
+    <div class="locked-bar">
+      <span class="locked-label">Stage 6 locked:</span>
+      <div class="locked-track"><div class="locked-fill" style="width:2.5%"></div></div>
+      <span class="locked-value" style="color:">$0.5M &bull; 1 UC</span>
+    </div>
+    <div class="model-mini">
+      <div class="model-mini-item"><div class="model-mini-label">M1 ML</div><div class="model-mini-value">$26.9M</div></div>
+      <div class="model-mini-item"><div class="model-mini-label">M3 ML</div><div class="model-mini-value">$21.8M</div></div>
+      <div class="model-mini-item"><div class="model-mini-label">M4 ML</div><div class="model-mini-value m4">$24.6M</div></div>
+    </div>
+    <div class="scenario-row">
+      <div class="scenario-box commit"><div class="scenario-label">M4 Commit</div><div class="scenario-value commit">$10.4M</div></div>
+      <div class="scenario-box ml"><div class="scenario-label">M4 Most Likely</div><div class="scenario-value ml">$24.6M</div></div>
+      <div class="scenario-box stretch"><div class="scenario-label">M4 Stretch</div><div class="scenario-value stretch">$33.7M</div></div>
+    </div>
+    <div class="rvp-line">RVP: <strong>Dean Kuvelis</strong> &bull; Target: <strong style="color:#6f42c1;">$19.8M</strong> &bull; M4 ML 124% of target &bull; Q4 FY26 actual: $21.5M</div>
+    <div class="facts-grid">
+      <div class="fact-row"><span class="fact-label">YoY pipeline (Q4 FY26)</span><span class="fact-value warn">$271.7M &rarr; $33.7M (-88%)</span></div>
+      <div class="fact-row"><span class="fact-label">Stale IMP (&gt;79d)</span><span class="fact-value warn">12 UCs / $2.9M</span></div>
+      <div class="fact-row"><span class="fact-label">Stale TW (&gt;104d)</span><span class="fact-value warn">1 UCs / $0.1M</span></div>
+      <div class="fact-row"><span class="fact-label">No next steps (Stage 4+)</span><span class="fact-value ok">0 UCs</span></div>
+    </div>
+  </div>
+  <div class="region-card">
+    <div class="region-name">SouthwestExp <span class="over-tag">128% of target</span> <span class="stale-tag">&#9888; $6.1M Stale IMP</span></div>
+    <div class="region-pipeline">$27.3M total &bull; 155 open UCs &bull; IMP 39% / TW 15% / Pre-TW 46%</div>
+    <div class="phase-bar-wrap">
+      <div class="phase-bar-track">
+        <div class="phase-imp"   style="width:39.2%"></div>
+        <div class="phase-tw"    style="width:14.5%"></div>
+        <div class="phase-pretw" style="width:45.7%"></div>
+      </div>
+      <div class="phase-legend">
+        <span class="phase-imp-leg">IMP $10.7M</span>
+        <span class="phase-tw-leg">TW $4.0M</span>
+        <span class="phase-pretw-leg">Pre-TW $12.5M</span>
+      </div>
+    </div>
+    <div class="locked-bar">
+      <span class="locked-label">Stage 6 locked:</span>
+      <div class="locked-track"><div class="locked-fill" style="width:0.8%"></div></div>
+      <span class="locked-value" style="color:">$0.1M &bull; 2 UCs</span>
+    </div>
+    <div class="model-mini">
+      <div class="model-mini-item"><div class="model-mini-label">M1 ML</div><div class="model-mini-value">$24.0M</div></div>
+      <div class="model-mini-item"><div class="model-mini-label">M3 ML</div><div class="model-mini-value">$21.0M</div></div>
+      <div class="model-mini-item"><div class="model-mini-label">M4 ML</div><div class="model-mini-value m4">$22.7M</div></div>
+    </div>
+    <div class="scenario-row">
+      <div class="scenario-box commit"><div class="scenario-label">M4 Commit</div><div class="scenario-value commit">$11.7M</div></div>
+      <div class="scenario-box ml"><div class="scenario-label">M4 Most Likely</div><div class="scenario-value ml">$22.7M</div></div>
+      <div class="scenario-box stretch"><div class="scenario-label">M4 Stretch</div><div class="scenario-value stretch">$27.3M</div></div>
+    </div>
+    <div class="rvp-line">RVP: <strong>Adam Sadowski</strong> &bull; Target: <strong style="color:#6f42c1;">$17.8M</strong> &bull; M4 ML 128% of target &bull; Q4 FY26 actual: $12.5M</div>
+    <div class="facts-grid">
+      <div class="fact-row"><span class="fact-label">YoY pipeline (Q4 FY26)</span><span class="fact-value warn">$271.7M &rarr; $27.3M (-90%)</span></div>
+      <div class="fact-row"><span class="fact-label">Stale IMP (&gt;79d)</span><span class="fact-value warn">28 UCs / $6.1M</span></div>
+      <div class="fact-row"><span class="fact-label">Stale TW (&gt;104d)</span><span class="fact-value warn">5 UCs / $1.4M</span></div>
+      <div class="fact-row"><span class="fact-label">No next steps (Stage 4+)</span><span class="fact-value ok">0 UCs</span></div>
+    </div>
+  </div>
+  <div class="region-card">
+    <div class="region-name">CanadaExp <span class="over-tag">160% of target</span> <span class="stale-tag">&#9888; $3.7M Stale IMP</span></div>
+    <div class="region-pipeline">$17.6M total &bull; 128 open UCs &bull; IMP 36% / TW 26% / Pre-TW 37%</div>
+    <div class="phase-bar-wrap">
+      <div class="phase-bar-track">
+        <div class="phase-imp"   style="width:35.9%"></div>
+        <div class="phase-tw"    style="width:25.8%"></div>
+        <div class="phase-pretw" style="width:37.0%"></div>
+      </div>
+      <div class="phase-legend">
+        <span class="phase-imp-leg">IMP $6.3M</span>
+        <span class="phase-tw-leg">TW $4.5M</span>
+        <span class="phase-pretw-leg">Pre-TW $6.5M</span>
+      </div>
+    </div>
+    <div class="locked-bar">
+      <span class="locked-label">Stage 6 locked:</span>
+      <div class="locked-track"><div class="locked-fill" style="width:2.5%"></div></div>
+      <span class="locked-value" style="color:">$0.2M &bull; 4 UCs</span>
+    </div>
+    <div class="model-mini">
+      <div class="model-mini-item"><div class="model-mini-label">M1 ML</div><div class="model-mini-value">$15.4M</div></div>
+      <div class="model-mini-item"><div class="model-mini-label">M3 ML</div><div class="model-mini-value">$13.9M</div></div>
+      <div class="model-mini-item"><div class="model-mini-label">M4 ML</div><div class="model-mini-value m4">$14.7M</div></div>
+    </div>
+    <div class="scenario-row">
+      <div class="scenario-box commit"><div class="scenario-label">M4 Commit</div><div class="scenario-value commit">$7.4M</div></div>
+      <div class="scenario-box ml"><div class="scenario-label">M4 Most Likely</div><div class="scenario-value ml">$14.7M</div></div>
+      <div class="scenario-box stretch"><div class="scenario-label">M4 Stretch</div><div class="scenario-value stretch">$17.6M</div></div>
+    </div>
+    <div class="rvp-line">RVP: <strong>Shannon Katschilo</strong> &bull; Target: <strong style="color:#6f42c1;">$9.2M</strong> &bull; M4 ML 160% of target &bull; Q4 FY26 actual: $10.6M</div>
+    <div class="facts-grid">
+      <div class="fact-row"><span class="fact-label">YoY pipeline (Q4 FY26)</span><span class="fact-value warn">$271.7M &rarr; $17.6M (-94%)</span></div>
+      <div class="fact-row"><span class="fact-label">Stale IMP (&gt;79d)</span><span class="fact-value warn">24 UCs / $3.7M</span></div>
+      <div class="fact-row"><span class="fact-label">Stale TW (&gt;104d)</span><span class="fact-value warn">9 UCs / $1.6M</span></div>
+      <div class="fact-row"><span class="fact-label">No next steps (Stage 4+)</span><span class="fact-value neutral">2 UCs</span></div>
+    </div>
+  </div>
+  <div class="region-card risk-flag">
+    <div class="region-name">Commercial <span class="risk-tag">48% of target</span> <span class="stale-tag">&#9888; $3.0M Stale IMP</span></div>
+    <div class="region-pipeline">$11.5M total &bull; 129 open UCs &bull; IMP 59% / TW 22% / Pre-TW 18%</div>
+    <div class="phase-bar-wrap">
+      <div class="phase-bar-track">
+        <div class="phase-imp"   style="width:59.1%"></div>
+        <div class="phase-tw"    style="width:22.5%"></div>
+        <div class="phase-pretw" style="width:17.5%"></div>
+      </div>
+      <div class="phase-legend">
+        <span class="phase-imp-leg">IMP $6.8M</span>
+        <span class="phase-tw-leg">TW $2.6M</span>
+        <span class="phase-pretw-leg">Pre-TW $2.0M</span>
+      </div>
+    </div>
+    <div class="locked-bar">
+      <span class="locked-label">Stage 6 locked:</span>
+      <div class="locked-track"><div class="locked-fill" style="width:0.5%"></div></div>
+      <span class="locked-value" style="color:">$0.1M &bull; 2 UCs</span>
+    </div>
+    <div class="model-mini">
+      <div class="model-mini-item"><div class="model-mini-label">M1 ML</div><div class="model-mini-value">$10.7M</div></div>
+      <div class="model-mini-item"><div class="model-mini-label">M3 ML</div><div class="model-mini-value">$11.1M</div></div>
+      <div class="model-mini-item"><div class="model-mini-label">M4 ML</div><div class="model-mini-value m4">$10.8M</div></div>
+    </div>
+    <div class="scenario-row">
+      <div class="scenario-box commit"><div class="scenario-label">M4 Commit</div><div class="scenario-value commit">$6.9M</div></div>
+      <div class="scenario-box ml"><div class="scenario-label">M4 Most Likely</div><div class="scenario-value ml">$10.8M</div></div>
+      <div class="scenario-box stretch"><div class="scenario-label">M4 Stretch</div><div class="scenario-value stretch">$11.5M</div></div>
+    </div>
+    <div class="rvp-line">RVP: <strong>Lisa Yu</strong> &bull; Target: <strong style="color:#6f42c1;">$22.7M</strong> &bull; M4 ML 48% of target &bull; Q4 FY26 actual: $11.0M</div>
+    <div class="facts-grid">
+      <div class="fact-row"><span class="fact-label">YoY pipeline (Q4 FY26)</span><span class="fact-value warn">$271.7M &rarr; $11.5M (-96%)</span></div>
+      <div class="fact-row"><span class="fact-label">Stale IMP (&gt;79d)</span><span class="fact-value warn">28 UCs / $3.0M</span></div>
+      <div class="fact-row"><span class="fact-label">Stale TW (&gt;104d)</span><span class="fact-value warn">10 UCs / $0.8M</span></div>
+      <div class="fact-row"><span class="fact-label">No next steps (Stage 4+)</span><span class="fact-value warn">27 UCs</span></div>
+    </div>
+  </div></div><!-- end region grid -->
+
+<div class="section-title">Regional Summary</div>
+<table style="width:100%;background:white;border-radius:10px;border-collapse:collapse;box-shadow:0 2px 8px rgba(0,0,0,0.07);overflow:hidden;font-size:0.87em;">
+  <thead>
+    <tr style="background:#1a1a2e;color:white;">
+      <th style="padding:11px 14px;text-align:left;">Region</th>
+      <th style="padding:11px 14px;text-align:right;">Pipeline</th>
+      <th style="padding:11px 14px;text-align:right;color:#f0a070;">M1 ML</th>
+      <th style="padding:11px 14px;text-align:right;color:#7bd3f0;">M3 ML</th>
+      <th style="padding:11px 14px;text-align:right;color:#f0a070;">M4 Commit</th>
+      <th style="padding:11px 14px;text-align:right;color:#86efac;">M4 ML</th>
+      <th style="padding:11px 14px;text-align:right;color:#93c5fd;">M4 Stretch</th>
+      <th style="padding:11px 14px;text-align:right;color:#c0a0f0;">Target</th>
+      <th style="padding:11px 14px;text-align:right;">ML/Target</th>
+      <th style="padding:11px 14px;text-align:right;">FY26 Q3</th>
+      <th style="padding:11px 14px;text-align:center;">RVP</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="border-bottom:1px solid #eee;">
+      <td style="padding:10px 14px;font-weight:600;">NortheastExp</td>
+      <td style="padding:10px 14px;text-align:right;">$56.1M</td>
+      <td style="padding:10px 14px;text-align:right;color:#888;">$44.5M</td>
+      <td style="padding:10px 14px;text-align:right;color:#888;">$35.4M</td>
+      <td style="padding:10px 14px;text-align:right;color:#e67e22;font-weight:600;">$14.7M</td>
+      <td style="padding:10px 14px;text-align:right;color:#27ae60;font-weight:600;">$40.5M</td>
+      <td style="padding:10px 14px;text-align:right;color:#1d8ab5;font-weight:600;">$56.1M</td>
+      <td style="padding:10px 14px;text-align:right;color:#6f42c1;font-weight:600;">$33.4M</td>
+      <td style="padding:10px 14px;text-align:right;color:#27ae60;font-weight:600;">121%</td>
+      <td style="padding:10px 14px;text-align:right;color:#666;">$29.9M</td>
+      <td style="padding:10px 14px;text-align:center;font-size:0.85em;">Moscoffian</td>
+    </tr>
+    <tr style="border-bottom:1px solid #eee;background:#fafafa;">
+      <td style="padding:10px 14px;font-weight:600;">USGrowthExp</td>
+      <td style="padding:10px 14px;text-align:right;">$39.2M</td>
+      <td style="padding:10px 14px;text-align:right;color:#888;">$32.3M</td>
+      <td style="padding:10px 14px;text-align:right;color:#888;">$30.7M</td>
+      <td style="padding:10px 14px;text-align:right;color:#e67e22;font-weight:600;">$17.1M</td>
+      <td style="padding:10px 14px;text-align:right;color:#e74c3c;font-weight:600;">$31.6M</td>
+      <td style="padding:10px 14px;text-align:right;color:#1d8ab5;font-weight:600;">$39.2M</td>
+      <td style="padding:10px 14px;text-align:right;color:#6f42c1;font-weight:600;">$43.5M</td>
+      <td style="padding:10px 14px;text-align:right;color:#e74c3c;font-weight:600;">73%</td>
+      <td style="padding:10px 14px;text-align:right;color:#666;">$25.0M</td>
+      <td style="padding:10px 14px;text-align:center;font-size:0.85em;">Daniels</td>
+    </tr>
+    <tr style="border-bottom:1px solid #eee;">
+      <td style="padding:10px 14px;font-weight:600;">CentralExp</td>
+      <td style="padding:10px 14px;text-align:right;">$36.8M</td>
+      <td style="padding:10px 14px;text-align:right;color:#888;">$26.2M</td>
+      <td style="padding:10px 14px;text-align:right;color:#888;">$25.5M</td>
+      <td style="padding:10px 14px;text-align:right;color:#e67e22;font-weight:600;">$12.7M</td>
+      <td style="padding:10px 14px;text-align:right;color:#27ae60;font-weight:600;">$25.9M</td>
+      <td style="padding:10px 14px;text-align:right;color:#1d8ab5;font-weight:600;">$36.8M</td>
+      <td style="padding:10px 14px;text-align:right;color:#6f42c1;font-weight:600;">$23.7M</td>
+      <td style="padding:10px 14px;text-align:right;color:#27ae60;font-weight:600;">109%</td>
+      <td style="padding:10px 14px;text-align:right;color:#666;">$19.5M</td>
+      <td style="padding:10px 14px;text-align:center;font-size:0.85em;">LaCamera</td>
+    </tr>
+    <tr style="border-bottom:1px solid #eee;background:#fafafa;">
+      <td style="padding:10px 14px;font-weight:600;">SoutheastExp</td>
+      <td style="padding:10px 14px;text-align:right;">$33.9M</td>
+      <td style="padding:10px 14px;text-align:right;color:#888;">$24.4M</td>
+      <td style="padding:10px 14px;text-align:right;color:#888;">$26.2M</td>
+      <td style="padding:10px 14px;text-align:right;color:#e67e22;font-weight:600;">$14.4M</td>
+      <td style="padding:10px 14px;text-align:right;color:#27ae60;font-weight:600;">$25.2M</td>
+      <td style="padding:10px 14px;text-align:right;color:#1d8ab5;font-weight:600;">$33.9M</td>
+      <td style="padding:10px 14px;text-align:right;color:#6f42c1;font-weight:600;">$19.7M</td>
+      <td style="padding:10px 14px;text-align:right;color:#27ae60;font-weight:600;">128%</td>
+      <td style="padding:10px 14px;text-align:right;color:#666;">$18.9M</td>
+      <td style="padding:10px 14px;text-align:center;font-size:0.85em;">Tarquinio</td>
+    </tr>
+    <tr style="border-bottom:1px solid #eee;">
+      <td style="padding:10px 14px;font-weight:600;">NorthwestExp</td>
+      <td style="padding:10px 14px;text-align:right;">$33.7M</td>
+      <td style="padding:10px 14px;text-align:right;color:#888;">$26.9M</td>
+      <td style="padding:10px 14px;text-align:right;color:#888;">$21.8M</td>
+      <td style="padding:10px 14px;text-align:right;color:#e67e22;font-weight:600;">$10.4M</td>
+      <td style="padding:10px 14px;text-align:right;color:#27ae60;font-weight:600;">$24.6M</td>
+      <td style="padding:10px 14px;text-align:right;color:#1d8ab5;font-weight:600;">$33.7M</td>
+      <td style="padding:10px 14px;text-align:right;color:#6f42c1;font-weight:600;">$19.8M</td>
+      <td style="padding:10px 14px;text-align:right;color:#27ae60;font-weight:600;">124%</td>
+      <td style="padding:10px 14px;text-align:right;color:#666;">$21.5M</td>
+      <td style="padding:10px 14px;text-align:center;font-size:0.85em;">Kuvelis</td>
+    </tr>
+    <tr style="border-bottom:1px solid #eee;background:#fafafa;">
+      <td style="padding:10px 14px;font-weight:600;">SouthwestExp</td>
+      <td style="padding:10px 14px;text-align:right;">$27.3M</td>
+      <td style="padding:10px 14px;text-align:right;color:#888;">$24.0M</td>
+      <td style="padding:10px 14px;text-align:right;color:#888;">$21.0M</td>
+      <td style="padding:10px 14px;text-align:right;color:#e67e22;font-weight:600;">$11.7M</td>
+      <td style="padding:10px 14px;text-align:right;color:#27ae60;font-weight:600;">$22.7M</td>
+      <td style="padding:10px 14px;text-align:right;color:#1d8ab5;font-weight:600;">$27.3M</td>
+      <td style="padding:10px 14px;text-align:right;color:#6f42c1;font-weight:600;">$17.8M</td>
+      <td style="padding:10px 14px;text-align:right;color:#27ae60;font-weight:600;">128%</td>
+      <td style="padding:10px 14px;text-align:right;color:#666;">$12.5M</td>
+      <td style="padding:10px 14px;text-align:center;font-size:0.85em;">Sadowski</td>
+    </tr>
+    <tr style="border-bottom:1px solid #eee;">
+      <td style="padding:10px 14px;font-weight:600;">CanadaExp</td>
+      <td style="padding:10px 14px;text-align:right;">$17.6M</td>
+      <td style="padding:10px 14px;text-align:right;color:#888;">$15.4M</td>
+      <td style="padding:10px 14px;text-align:right;color:#888;">$13.9M</td>
+      <td style="padding:10px 14px;text-align:right;color:#e67e22;font-weight:600;">$7.4M</td>
+      <td style="padding:10px 14px;text-align:right;color:#27ae60;font-weight:600;">$14.7M</td>
+      <td style="padding:10px 14px;text-align:right;color:#1d8ab5;font-weight:600;">$17.6M</td>
+      <td style="padding:10px 14px;text-align:right;color:#6f42c1;font-weight:600;">$9.2M</td>
+      <td style="padding:10px 14px;text-align:right;color:#27ae60;font-weight:600;">160%</td>
+      <td style="padding:10px 14px;text-align:right;color:#666;">$10.6M</td>
+      <td style="padding:10px 14px;text-align:center;font-size:0.85em;">Katschilo</td>
+    </tr>
+    <tr style="border-bottom:1px solid #eee;background:#fafafa;">
+      <td style="padding:10px 14px;font-weight:600;">Commercial</td>
+      <td style="padding:10px 14px;text-align:right;">$11.5M</td>
+      <td style="padding:10px 14px;text-align:right;color:#888;">$10.7M</td>
+      <td style="padding:10px 14px;text-align:right;color:#888;">$11.1M</td>
+      <td style="padding:10px 14px;text-align:right;color:#e67e22;font-weight:600;">$6.9M</td>
+      <td style="padding:10px 14px;text-align:right;color:#e74c3c;font-weight:600;">$10.8M</td>
+      <td style="padding:10px 14px;text-align:right;color:#1d8ab5;font-weight:600;">$11.5M</td>
+      <td style="padding:10px 14px;text-align:right;color:#6f42c1;font-weight:600;">$22.7M</td>
+      <td style="padding:10px 14px;text-align:right;color:#e74c3c;font-weight:600;">48%</td>
+      <td style="padding:10px 14px;text-align:right;color:#666;">$11.0M</td>
+      <td style="padding:10px 14px;text-align:center;font-size:0.85em;">Yu</td>
+    </tr>
+    <tr style="background:#1a1a2e;color:white;font-weight:700;">
+      <td style="padding:12px 14px;">AMSExpansion Total</td>
+      <td style="padding:12px 14px;text-align:right;">$256.2M</td>
+      <td style="padding:12px 14px;text-align:right;color:#aaa;">$204.4M</td>
+      <td style="padding:12px 14px;text-align:right;color:#aaa;">$185.6M</td>
+      <td style="padding:12px 14px;text-align:right;color:#f0a070;">$95.3M</td>
+      <td style="padding:12px 14px;text-align:right;color:#27ae60;">$196.1M</td>
+      <td style="padding:12px 14px;text-align:right;color:#93c5fd;">$256.2M</td>
+      <td style="padding:12px 14px;text-align:right;color:#c0a0f0;">$189.8M</td>
+      <td style="padding:12px 14px;text-align:right;color:#27ae60;">103%</td>
+      <td style="padding:12px 14px;text-align:right;color:#aaa;">$148.9M</td>
+      <td style="padding:12px 14px;text-align:center;color:#aaa;">Mark Fleming</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="tab-wrap">
+  <div class="tab-bar">
+    <button class="tab-btn active" onclick="showTab('commercial', this)">Commercial Districts</button>
+    <button class="tab-btn"        onclick="showTab('usgrowth',   this)">USGrowth Districts</button>
+  </div>
+
+  <div id="tab-commercial" class="tab-content active">
+    <p class="tab-subtitle">Commercial &mdash; 8 districts &bull; $11.5M total Q4 FY27 pipeline &bull; RVP: Lisa Yu</p>
+    <div class="district-grid">
+      
+  <div class="district-card risk-flag">
+    <div class="district-name">CommHCLS</div>
+    <div class="district-meta">32 UCs &bull; $2.9M pipeline</div>
+    <div class="phase-bar-wrap">
+      <div class="phase-bar-track">
+        <div class="phase-imp"   style="width:50.9%"></div>
+        <div class="phase-tw"    style="width:29.1%"></div>
+        <div class="phase-pretw" style="width:18.3%"></div>
+      </div>
+      <div class="phase-legend">
+        <span class="phase-imp-leg">IMP $1.5M</span>
+        <span class="phase-tw-leg">TW $0.8M</span>
+        <span class="phase-pretw-leg">Pre-TW $0.5M</span>
+      </div>
+    </div>
+    <div class="district-m4">$2.7M</div>
+    <div class="district-m4-label">M4 Most Likely</div>
+    <div class="district-mini">
+      <div class="district-mini-item"><div class="district-mini-label">M1 ML</div><div class="district-mini-value">$2.8M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M3 ML</div><div class="district-mini-value">$2.7M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M4 Commit</div><div class="district-mini-value">$1.6M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M4 Stretch</div><div class="district-mini-value">$2.9M</div></div>
+    </div>
+    <div class="district-flags">
+      <span><span>Stale IMP (&gt;79d)</span><span class="warn">5 UCs / $0.6M</span></span>
+      <span><span>Stale TW (&gt;104d)</span><span class="warn">5 UCs</span></span>
+      <span><span>No next steps</span><span class="warn">8 UCs</span></span>
+    </div>
+  </div>
+  <div class="district-card">
+    <div class="district-name">CommTech1</div>
+    <div class="district-meta">8 UCs &bull; $1.8M pipeline</div>
+    <div class="phase-bar-wrap">
+      <div class="phase-bar-track">
+        <div class="phase-imp"   style="width:91.5%"></div>
+        <div class="phase-tw"    style="width:8.5%"></div>
+        <div class="phase-pretw" style="width:0.0%"></div>
+      </div>
+      <div class="phase-legend">
+        <span class="phase-imp-leg">IMP $1.6M</span>
+        <span class="phase-tw-leg">TW $0.1M</span>
+        <span class="phase-pretw-leg">Pre-TW $0.0M</span>
+      </div>
+    </div>
+    <div class="district-m4">$1.9M</div>
+    <div class="district-m4-label">M4 Most Likely</div>
+    <div class="district-mini">
+      <div class="district-mini-item"><div class="district-mini-label">M1 ML</div><div class="district-mini-value">$1.8M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M3 ML</div><div class="district-mini-value">$2.0M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M4 Commit</div><div class="district-mini-value">$1.5M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M4 Stretch</div><div class="district-mini-value">$1.8M</div></div>
+    </div>
+    <div class="district-flags">
+      <span><span>Stale IMP (&gt;79d)</span><span class="warn">3 UCs / $0.5M</span></span>
+      <span><span>Stale TW (&gt;104d)</span><span class="warn">1 UCs</span></span>
+      <span><span>No next steps</span><span class="warn">3 UCs</span></span>
+    </div>
+  </div>
+  <div class="district-card risk-flag">
+    <div class="district-name">CommTech2</div>
+    <div class="district-meta">15 UCs &bull; $1.5M pipeline</div>
+    <div class="phase-bar-wrap">
+      <div class="phase-bar-track">
+        <div class="phase-imp"   style="width:87.4%"></div>
+        <div class="phase-tw"    style="width:7.8%"></div>
+        <div class="phase-pretw" style="width:4.8%"></div>
+      </div>
+      <div class="phase-legend">
+        <span class="phase-imp-leg">IMP $1.3M</span>
+        <span class="phase-tw-leg">TW $0.1M</span>
+        <span class="phase-pretw-leg">Pre-TW $0.1M</span>
+      </div>
+    </div>
+    <div class="district-m4">$1.5M</div>
+    <div class="district-m4-label">M4 Most Likely</div>
+    <div class="district-mini">
+      <div class="district-mini-item"><div class="district-mini-label">M1 ML</div><div class="district-mini-value">$1.3M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M3 ML</div><div class="district-mini-value">$1.7M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M4 Commit</div><div class="district-mini-value">$1.2M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M4 Stretch</div><div class="district-mini-value">$1.5M</div></div>
+    </div>
+    <div class="district-flags">
+      <span><span>Stale IMP (&gt;79d)</span><span class="warn">4 UCs / $0.5M</span></span>
+      <span><span>Stale TW (&gt;104d)</span><span class="ok">0 UCs</span></span>
+      <span><span>No next steps</span><span class="warn">6 UCs</span></span>
+    </div>
+  </div>
+  <div class="district-card">
+    <div class="district-name">CommRetailEast</div>
+    <div class="district-meta">23 UCs &bull; $1.3M pipeline</div>
+    <div class="phase-bar-wrap">
+      <div class="phase-bar-track">
+        <div class="phase-imp"   style="width:36.1%"></div>
+        <div class="phase-tw"    style="width:15.4%"></div>
+        <div class="phase-pretw" style="width:48.5%"></div>
+      </div>
+      <div class="phase-legend">
+        <span class="phase-imp-leg">IMP $0.5M</span>
+        <span class="phase-tw-leg">TW $0.2M</span>
+        <span class="phase-pretw-leg">Pre-TW $0.6M</span>
+      </div>
+    </div>
+    <div class="district-m4">$1.1M</div>
+    <div class="district-m4-label">M4 Most Likely</div>
+    <div class="district-mini">
+      <div class="district-mini-item"><div class="district-mini-label">M1 ML</div><div class="district-mini-value">$1.2M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M3 ML</div><div class="district-mini-value">$1.0M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M4 Commit</div><div class="district-mini-value">$0.5M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M4 Stretch</div><div class="district-mini-value">$1.3M</div></div>
+    </div>
+    <div class="district-flags">
+      <span><span>Stale IMP (&gt;79d)</span><span class="warn">4 UCs / $0.2M</span></span>
+      <span><span>Stale TW (&gt;104d)</span><span class="ok">0 UCs</span></span>
+      <span><span>No next steps</span><span class="warn">3 UCs</span></span>
+    </div>
+  </div>
+  <div class="district-card">
+    <div class="district-name">CommFinServ2</div>
+    <div class="district-meta">19 UCs &bull; $1.2M pipeline</div>
+    <div class="phase-bar-wrap">
+      <div class="phase-bar-track">
+        <div class="phase-imp"   style="width:53.0%"></div>
+        <div class="phase-tw"    style="width:13.7%"></div>
+        <div class="phase-pretw" style="width:28.9%"></div>
+      </div>
+      <div class="phase-legend">
+        <span class="phase-imp-leg">IMP $0.7M</span>
+        <span class="phase-tw-leg">TW $0.2M</span>
+        <span class="phase-pretw-leg">Pre-TW $0.4M</span>
+      </div>
+    </div>
+    <div class="district-m4">$1.1M</div>
+    <div class="district-m4-label">M4 Most Likely</div>
+    <div class="district-mini">
+      <div class="district-mini-item"><div class="district-mini-label">M1 ML</div><div class="district-mini-value">$1.1M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M3 ML</div><div class="district-mini-value">$1.1M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M4 Commit</div><div class="district-mini-value">$0.7M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M4 Stretch</div><div class="district-mini-value">$1.2M</div></div>
+    </div>
+    <div class="district-flags">
+      <span><span>Stale IMP (&gt;79d)</span><span class="warn">4 UCs / $0.2M</span></span>
+      <span><span>Stale TW (&gt;104d)</span><span class="warn">1 UCs</span></span>
+      <span><span>No next steps</span><span class="warn">4 UCs</span></span>
+    </div>
+  </div>
+  <div class="district-card risk-flag">
+    <div class="district-name">CommFinServ1</div>
+    <div class="district-meta">12 UCs &bull; $1.2M pipeline</div>
+    <div class="phase-bar-wrap">
+      <div class="phase-bar-track">
+        <div class="phase-imp"   style="width:83.3%"></div>
+        <div class="phase-tw"    style="width:12.6%"></div>
+        <div class="phase-pretw" style="width:4.2%"></div>
+      </div>
+      <div class="phase-legend">
+        <span class="phase-imp-leg">IMP $1.0M</span>
+        <span class="phase-tw-leg">TW $0.1M</span>
+        <span class="phase-pretw-leg">Pre-TW $0.1M</span>
+      </div>
+    </div>
+    <div class="district-m4">$1.2M</div>
+    <div class="district-m4-label">M4 Most Likely</div>
+    <div class="district-mini">
+      <div class="district-mini-item"><div class="district-mini-label">M1 ML</div><div class="district-mini-value">$1.1M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M3 ML</div><div class="district-mini-value">$1.3M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M4 Commit</div><div class="district-mini-value">$0.9M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M4 Stretch</div><div class="district-mini-value">$1.2M</div></div>
+    </div>
+    <div class="district-flags">
+      <span><span>Stale IMP (&gt;79d)</span><span class="warn">6 UCs / $0.8M</span></span>
+      <span><span>Stale TW (&gt;104d)</span><span class="warn">1 UCs</span></span>
+      <span><span>No next steps</span><span class="">2 UCs</span></span>
+    </div>
+  </div>
+  <div class="district-card">
+    <div class="district-name">CommRetailWest</div>
+    <div class="district-meta">8 UCs &bull; $0.8M pipeline</div>
+    <div class="phase-bar-wrap">
+      <div class="phase-bar-track">
+        <div class="phase-imp"   style="width:23.5%"></div>
+        <div class="phase-tw"    style="width:60.0%"></div>
+        <div class="phase-pretw" style="width:16.5%"></div>
+      </div>
+      <div class="phase-legend">
+        <span class="phase-imp-leg">IMP $0.2M</span>
+        <span class="phase-tw-leg">TW $0.5M</span>
+        <span class="phase-pretw-leg">Pre-TW $0.1M</span>
+      </div>
+    </div>
+    <div class="district-m4">$0.7M</div>
+    <div class="district-m4-label">M4 Most Likely</div>
+    <div class="district-mini">
+      <div class="district-mini-item"><div class="district-mini-label">M1 ML</div><div class="district-mini-value">$0.8M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M3 ML</div><div class="district-mini-value">$0.7M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M4 Commit</div><div class="district-mini-value">$0.3M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M4 Stretch</div><div class="district-mini-value">$0.8M</div></div>
+    </div>
+    <div class="district-flags">
+      <span><span>Stale IMP (&gt;79d)</span><span class="warn">1 UCs / $0.1M</span></span>
+      <span><span>Stale TW (&gt;104d)</span><span class="ok">0 UCs</span></span>
+      <span><span>No next steps</span><span class="">1 UCs</span></span>
+    </div>
+  </div>
+  <div class="district-card">
+    <div class="district-name">CommMFG</div>
+    <div class="district-meta">12 UCs &bull; $0.8M pipeline</div>
+    <div class="phase-bar-wrap">
+      <div class="phase-bar-track">
+        <div class="phase-imp"   style="width:14.1%"></div>
+        <div class="phase-tw"    style="width:57.1%"></div>
+        <div class="phase-pretw" style="width:28.8%"></div>
+      </div>
+      <div class="phase-legend">
+        <span class="phase-imp-leg">IMP $0.1M</span>
+        <span class="phase-tw-leg">TW $0.4M</span>
+        <span class="phase-pretw-leg">Pre-TW $0.2M</span>
+      </div>
+    </div>
+    <div class="district-m4">$0.6M</div>
+    <div class="district-m4-label">M4 Most Likely</div>
+    <div class="district-mini">
+      <div class="district-mini-item"><div class="district-mini-label">M1 ML</div><div class="district-mini-value">$0.6M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M3 ML</div><div class="district-mini-value">$0.6M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M4 Commit</div><div class="district-mini-value">$0.2M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M4 Stretch</div><div class="district-mini-value">$0.8M</div></div>
+    </div>
+    <div class="district-flags">
+      <span><span>Stale IMP (&gt;79d)</span><span class="warn">1 UCs / $0.0M</span></span>
+      <span><span>Stale TW (&gt;104d)</span><span class="warn">2 UCs</span></span>
+      <span><span>No next steps</span><span class="ok">0 UCs</span></span>
+    </div>
+  </div>
+    </div>
+  </div>
+
+  <div id="tab-usgrowth" class="tab-content">
+    <p class="tab-subtitle">USGrowth &mdash; 8 districts &bull; $39.2M total Q4 FY27 pipeline &bull; RVP: Brian Daniels</p>
+    <div class="district-grid">
+      
+  <div class="district-card risk-flag">
+    <div class="district-name">USGrowthSCentExp</div>
+    <div class="district-meta">34 UCs &bull; $10.8M pipeline</div>
+    <div class="phase-bar-wrap">
+      <div class="phase-bar-track">
+        <div class="phase-imp"   style="width:55.6%"></div>
+        <div class="phase-tw"    style="width:19.9%"></div>
+        <div class="phase-pretw" style="width:24.4%"></div>
+      </div>
+      <div class="phase-legend">
+        <span class="phase-imp-leg">IMP $6.0M</span>
+        <span class="phase-tw-leg">TW $2.1M</span>
+        <span class="phase-pretw-leg">Pre-TW $2.6M</span>
+      </div>
+    </div>
+    <div class="district-m4">$9.2M</div>
+    <div class="district-m4-label">M4 Most Likely</div>
+    <div class="district-mini">
+      <div class="district-mini-item"><div class="district-mini-label">M1 ML</div><div class="district-mini-value">$8.7M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M3 ML</div><div class="district-mini-value">$9.9M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M4 Commit</div><div class="district-mini-value">$6.0M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M4 Stretch</div><div class="district-mini-value">$10.8M</div></div>
+    </div>
+    <div class="district-flags">
+      <span><span>Stale IMP (&gt;79d)</span><span class="warn">7 UCs / $3.9M</span></span>
+      <span><span>Stale TW (&gt;104d)</span><span class="ok">0 UCs</span></span>
+      <span><span>No next steps</span><span class="">2 UCs</span></span>
+    </div>
+  </div>
+  <div class="district-card">
+    <div class="district-name">USGrowthNCentExp</div>
+    <div class="district-meta">37 UCs &bull; $7.6M pipeline</div>
+    <div class="phase-bar-wrap">
+      <div class="phase-bar-track">
+        <div class="phase-imp"   style="width:12.9%"></div>
+        <div class="phase-tw"    style="width:8.8%"></div>
+        <div class="phase-pretw" style="width:76.4%"></div>
+      </div>
+      <div class="phase-legend">
+        <span class="phase-imp-leg">IMP $1.0M</span>
+        <span class="phase-tw-leg">TW $0.7M</span>
+        <span class="phase-pretw-leg">Pre-TW $5.8M</span>
+      </div>
+    </div>
+    <div class="district-m4">$5.3M</div>
+    <div class="district-m4-label">M4 Most Likely</div>
+    <div class="district-mini">
+      <div class="district-mini-item"><div class="district-mini-label">M1 ML</div><div class="district-mini-value">$6.2M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M3 ML</div><div class="district-mini-value">$4.2M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M4 Commit</div><div class="district-mini-value">$1.7M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M4 Stretch</div><div class="district-mini-value">$7.6M</div></div>
+    </div>
+    <div class="district-flags">
+      <span><span>Stale IMP (&gt;79d)</span><span class="warn">1 UCs / $0.3M</span></span>
+      <span><span>Stale TW (&gt;104d)</span><span class="ok">0 UCs</span></span>
+      <span><span>No next steps</span><span class="ok">0 UCs</span></span>
+    </div>
+  </div>
+  <div class="district-card risk-flag">
+    <div class="district-name">USGrowthSEExp</div>
+    <div class="district-meta">27 UCs &bull; $4.4M pipeline</div>
+    <div class="phase-bar-wrap">
+      <div class="phase-bar-track">
+        <div class="phase-imp"   style="width:24.5%"></div>
+        <div class="phase-tw"    style="width:15.6%"></div>
+        <div class="phase-pretw" style="width:59.9%"></div>
+      </div>
+      <div class="phase-legend">
+        <span class="phase-imp-leg">IMP $1.1M</span>
+        <span class="phase-tw-leg">TW $0.7M</span>
+        <span class="phase-pretw-leg">Pre-TW $2.7M</span>
+      </div>
+    </div>
+    <div class="district-m4">$2.6M</div>
+    <div class="district-m4-label">M4 Most Likely</div>
+    <div class="district-mini">
+      <div class="district-mini-item"><div class="district-mini-label">M1 ML</div><div class="district-mini-value">$2.3M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M3 ML</div><div class="district-mini-value">$2.9M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M4 Commit</div><div class="district-mini-value">$1.4M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M4 Stretch</div><div class="district-mini-value">$4.4M</div></div>
+    </div>
+    <div class="district-flags">
+      <span><span>Stale IMP (&gt;79d)</span><span class="warn">4 UCs / $0.3M</span></span>
+      <span><span>Stale TW (&gt;104d)</span><span class="warn">2 UCs</span></span>
+      <span><span>No next steps</span><span class="warn">6 UCs</span></span>
+    </div>
+  </div>
+  <div class="district-card">
+    <div class="district-name">USGrowthNEExp</div>
+    <div class="district-meta">27 UCs &bull; $4.4M pipeline</div>
+    <div class="phase-bar-wrap">
+      <div class="phase-bar-track">
+        <div class="phase-imp"   style="width:22.5%"></div>
+        <div class="phase-tw"    style="width:16.1%"></div>
+        <div class="phase-pretw" style="width:61.4%"></div>
+      </div>
+      <div class="phase-legend">
+        <span class="phase-imp-leg">IMP $1.0M</span>
+        <span class="phase-tw-leg">TW $0.7M</span>
+        <span class="phase-pretw-leg">Pre-TW $2.7M</span>
+      </div>
+    </div>
+    <div class="district-m4">$3.2M</div>
+    <div class="district-m4-label">M4 Most Likely</div>
+    <div class="district-mini">
+      <div class="district-mini-item"><div class="district-mini-label">M1 ML</div><div class="district-mini-value">$3.6M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M3 ML</div><div class="district-mini-value">$2.8M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M4 Commit</div><div class="district-mini-value">$1.3M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M4 Stretch</div><div class="district-mini-value">$4.4M</div></div>
+    </div>
+    <div class="district-flags">
+      <span><span>Stale IMP (&gt;79d)</span><span class="warn">1 UCs / $0.0M</span></span>
+      <span><span>Stale TW (&gt;104d)</span><span class="warn">2 UCs</span></span>
+      <span><span>No next steps</span><span class="ok">0 UCs</span></span>
+    </div>
+  </div>
+  <div class="district-card">
+    <div class="district-name">USGrowthSWExp</div>
+    <div class="district-meta">11 UCs &bull; $3.8M pipeline</div>
+    <div class="phase-bar-wrap">
+      <div class="phase-bar-track">
+        <div class="phase-imp"   style="width:54.7%"></div>
+        <div class="phase-tw"    style="width:33.3%"></div>
+        <div class="phase-pretw" style="width:12.0%"></div>
+      </div>
+      <div class="phase-legend">
+        <span class="phase-imp-leg">IMP $2.0M</span>
+        <span class="phase-tw-leg">TW $1.2M</span>
+        <span class="phase-pretw-leg">Pre-TW $0.5M</span>
+      </div>
+    </div>
+    <div class="district-m4">$3.7M</div>
+    <div class="district-m4-label">M4 Most Likely</div>
+    <div class="district-mini">
+      <div class="district-mini-item"><div class="district-mini-label">M1 ML</div><div class="district-mini-value">$3.8M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M3 ML</div><div class="district-mini-value">$3.6M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M4 Commit</div><div class="district-mini-value">$2.1M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M4 Stretch</div><div class="district-mini-value">$3.8M</div></div>
+    </div>
+    <div class="district-flags">
+      <span><span>Stale IMP (&gt;79d)</span><span class="warn">3 UCs / $0.6M</span></span>
+      <span><span>Stale TW (&gt;104d)</span><span class="ok">0 UCs</span></span>
+      <span><span>No next steps</span><span class="ok">0 UCs</span></span>
+    </div>
+  </div>
+  <div class="district-card">
+    <div class="district-name">USGrowthMidAtlExp</div>
+    <div class="district-meta">18 UCs &bull; $3.6M pipeline</div>
+    <div class="phase-bar-wrap">
+      <div class="phase-bar-track">
+        <div class="phase-imp"   style="width:74.5%"></div>
+        <div class="phase-tw"    style="width:9.7%"></div>
+        <div class="phase-pretw" style="width:15.7%"></div>
+      </div>
+      <div class="phase-legend">
+        <span class="phase-imp-leg">IMP $2.7M</span>
+        <span class="phase-tw-leg">TW $0.3M</span>
+        <span class="phase-pretw-leg">Pre-TW $0.6M</span>
+      </div>
+    </div>
+    <div class="district-m4">$3.6M</div>
+    <div class="district-m4-label">M4 Most Likely</div>
+    <div class="district-mini">
+      <div class="district-mini-item"><div class="district-mini-label">M1 ML</div><div class="district-mini-value">$3.6M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M3 ML</div><div class="district-mini-value">$3.7M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M4 Commit</div><div class="district-mini-value">$2.5M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M4 Stretch</div><div class="district-mini-value">$3.6M</div></div>
+    </div>
+    <div class="district-flags">
+      <span><span>Stale IMP (&gt;79d)</span><span class="warn">3 UCs / $0.8M</span></span>
+      <span><span>Stale TW (&gt;104d)</span><span class="warn">2 UCs</span></span>
+      <span><span>No next steps</span><span class="ok">0 UCs</span></span>
+    </div>
+  </div>
+  <div class="district-card">
+    <div class="district-name">USGrowthBayAreaExp</div>
+    <div class="district-meta">14 UCs &bull; $3.1M pipeline</div>
+    <div class="phase-bar-wrap">
+      <div class="phase-bar-track">
+        <div class="phase-imp"   style="width:40.3%"></div>
+        <div class="phase-tw"    style="width:0.0%"></div>
+        <div class="phase-pretw" style="width:59.7%"></div>
+      </div>
+      <div class="phase-legend">
+        <span class="phase-imp-leg">IMP $1.2M</span>
+        <span class="phase-tw-leg">TW $0.0M</span>
+        <span class="phase-pretw-leg">Pre-TW $1.9M</span>
+      </div>
+    </div>
+    <div class="district-m4">$2.4M</div>
+    <div class="district-m4-label">M4 Most Likely</div>
+    <div class="district-mini">
+      <div class="district-mini-item"><div class="district-mini-label">M1 ML</div><div class="district-mini-value">$2.5M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M3 ML</div><div class="district-mini-value">$2.2M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M4 Commit</div><div class="district-mini-value">$1.3M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M4 Stretch</div><div class="district-mini-value">$3.1M</div></div>
+    </div>
+    <div class="district-flags">
+      <span><span>Stale IMP (&gt;79d)</span><span class="warn">1 UCs / $0.8M</span></span>
+      <span><span>Stale TW (&gt;104d)</span><span class="ok">0 UCs</span></span>
+      <span><span>No next steps</span><span class="ok">0 UCs</span></span>
+    </div>
+  </div>
+  <div class="district-card">
+    <div class="district-name">USGrowthNWExp</div>
+    <div class="district-meta">7 UCs &bull; $1.6M pipeline</div>
+    <div class="phase-bar-wrap">
+      <div class="phase-bar-track">
+        <div class="phase-imp"   style="width:34.4%"></div>
+        <div class="phase-tw"    style="width:56.2%"></div>
+        <div class="phase-pretw" style="width:9.4%"></div>
+      </div>
+      <div class="phase-legend">
+        <span class="phase-imp-leg">IMP $0.6M</span>
+        <span class="phase-tw-leg">TW $0.9M</span>
+        <span class="phase-pretw-leg">Pre-TW $0.1M</span>
+      </div>
+    </div>
+    <div class="district-m4">$1.5M</div>
+    <div class="district-m4-label">M4 Most Likely</div>
+    <div class="district-mini">
+      <div class="district-mini-item"><div class="district-mini-label">M1 ML</div><div class="district-mini-value">$1.6M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M3 ML</div><div class="district-mini-value">$1.4M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M4 Commit</div><div class="district-mini-value">$0.7M</div></div>
+      <div class="district-mini-item"><div class="district-mini-label">M4 Stretch</div><div class="district-mini-value">$1.6M</div></div>
+    </div>
+    <div class="district-flags">
+      <span><span>Stale IMP (&gt;79d)</span><span class="warn">1 UCs / $0.1M</span></span>
+      <span><span>Stale TW (&gt;104d)</span><span class="warn">3 UCs</span></span>
+      <span><span>No next steps</span><span class="">2 UCs</span></span>
+    </div>
+  </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function showTab(id, btn) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+  document.getElementById('tab-' + id).classList.add('active');
+  btn.classList.add('active');
+}
+</script>
+<!-- Wins Forecast -->
+<div class="section-title" style="margin-top:32px;">Use Case Wins Forecast &mdash; Q4 FY27</div>
+<div style="background:white;border-radius:10px;padding:20px 24px;box-shadow:0 2px 8px rgba(0,0,0,0.07);margin-bottom:24px;">
+
+  <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:18px;">
+    <div style="background:#f8f9fa;border-radius:8px;padding:14px;text-align:center;border-top:3px solid #1a1a2e;">
+      <div style="font-size:0.7em;text-transform:uppercase;color:#888;margin-bottom:4px;">Q3 Decision Pipeline</div>
+      <div style="font-size:1.5em;font-weight:700;color:#1a1a2e;">$195.4M</div>
+      <div style="font-size:0.75em;color:#666;margin-top:3px;">1,114 UCs with Q3 decision date</div>
+    </div>
+    <div style="background:#fef9f5;border-radius:8px;padding:14px;text-align:center;border-top:3px solid #e67e22;">
+      <div style="font-size:0.7em;text-transform:uppercase;color:#888;margin-bottom:4px;">Commit</div>
+      <div style="font-size:1.5em;font-weight:700;color:#e67e22;">$76.6M</div>
+      <div style="font-size:0.75em;color:#666;margin-top:3px;">Stage Conversion (min rates) &bull; 39% of target</div>
+    </div>
+    <div style="background:#f0fdf4;border-radius:8px;padding:14px;text-align:center;border-top:3px solid #27ae60;">
+      <div style="font-size:0.7em;text-transform:uppercase;color:#888;margin-bottom:4px;">Most Likely</div>
+      <div style="font-size:1.5em;font-weight:700;color:#c0392b;">$106.8M</div>
+      <div style="font-size:0.75em;color:#666;margin-top:3px;">Stage Conversion (avg rates) &bull; 54% of target</div>
+    </div>
+    <div style="background:#f0f8fd;border-radius:8px;padding:14px;text-align:center;border-top:3px solid #1d8ab5;">
+      <div style="font-size:0.7em;text-transform:uppercase;color:#888;margin-bottom:4px;">Stretch</div>
+      <div style="font-size:1.5em;font-weight:700;color:#1d8ab5;">$127.6M</div>
+      <div style="font-size:0.75em;color:#666;margin-top:3px;">Best-quarter effective rate (65%, Q2 FY27)</div>
+    </div>
+    <div style="background:#f8f9fa;border-radius:8px;padding:14px;text-align:center;border-top:3px solid #6f42c1;">
+      <div style="font-size:0.7em;text-transform:uppercase;color:#888;margin-bottom:4px;">Wins Target</div>
+      <div style="font-size:1.5em;font-weight:700;color:#6f42c1;">$197.6M</div>
+      <div style="font-size:0.75em;color:#666;margin-top:3px;">Q4 FY27</div>
+    </div>
+  </div>
+
+  <div style="font-size:0.82em;color:#555;line-height:1.7;">
+    <strong>Methodology (Stage Conversion Model):</strong> Applies historical decision-dated Pre-TW &rarr; Stage 4 Won conversion rate (29.4%)
+    to pipeline with DECISION_DATE in Q3 ($195.4M),
+    then divides by (1 &minus; 46.2%) to account for wins from outside the decision-dated pipeline (pull-ins + new UCs).
+    Commit uses min rates (25.6% conv, 34.7% new). Stretch uses best-quarter effective rate (65.3%, Q2 FY27).<br>
+    Rates calibrated from Q3/Q4 FY26 + Q1/Q2 FY27 (Q2 at 2&times; weight). Win = ACTUAL_USE_CASE_WON_DATE (Stage 4 achieved).
+  </div>
+</div>
+
+<!-- Methodology -->
+<div class="methodology">
+  <h3>Model Methodology</h3>
+  <div class="method-grid">
+    <div class="method-box">
+      <h4 style="color:#e67e22;">M1 &mdash; Pipeline Risk</h4>
+      <p>Binary risk classification against 92 days of runway (full quarter). Good = days_in_stage + 92 &ge; threshold. Stage 5: 79d. Stage 4: 104d. Stage 1&ndash;3: 146d. Commit = deployed + Stage 5+6. ML = commit + all good pipeline. Stretch = deployed + total pipeline. As the quarter runs down the runway shrinks, so the same UC can move from good to at-risk without changing stage. <em>Backtest avg error: 22.8%</em></p>
+    </div>
+    <div class="method-box">
+      <h4 style="color:#888;">M2 &mdash; Historical Pacing</h4>
+      <p>Requires deployed ACV as the denominator. Deployed = $0 until Q4 FY27 opens Nov 1. Weight redistributed to M1/M3.</p>
+    </div>
+    <div class="method-box">
+      <h4 style="color:#1d8ab5;">M3 &mdash; Stage Conversion</h4>
+      <p>IMP 44.0% + TW 27.7% + Pre-TW 14.8%, applied to milestone-dated buckets and added to deployed ACV, then &divide; (1 &minus; 63.3%) to gross up for pipeline not yet visible. Commit uses min rates &divide; (1 &minus; 54.7%). Stretch = deployed + total pipeline (capped). Rates calibrated at this report's own time horizon from Q3/Q4 FY26 + Q1/Q2 FY27, most recent quarter double-weighted. <em>LOO backtest avg error: 21.5%</em></p>
+    </div>
+    <div class="method-box">
+      <h4 style="color:#27ae60;">M4 &mdash; Weighted Ensemble</h4>
+      <p>M2 contributes nothing because the quarter has not opened, so its 10% weight is redistributed proportionally across M1 and M3 &mdash; M1 56.0%, M3 44.0% &mdash; keeping the ensemble at 100%. Applied identically to all 8 regions.</p>
+    </div>
+  </div>
+  <div class="caution">
+    <strong>Target gap (AMSExpansion):</strong> M4 ML ($196.1M) +6.3M vs target ($189.8M). M4 Stretch ($256.2M) exceeds target by 66.4M.
+  </div>
+  <div class="insight">
+    <strong>M1 vs M3 divergence note:</strong> M1 and M3 are nearly equal in accuracy (22.8% vs 21.5% LOO error), so M4 weights them almost equally. M1 tends to overpredict in high-pipeline quarters (Q4 FY26: +25.7%, Q1 FY27: +37.5%) while M3 tends to underpredict in low-pipeline/high-new-pipeline quarters (Q3 FY26: &minus;27.2%). The ensemble corrects for both biases.
+  </div>
+</div>
+
+<p style="font-size:0.72em;color:#aaa;margin-top:16px;text-align:center;">Generated September 9, 2026 &bull; Sources: MDM.MDM_INTERFACES.DIM_USE_CASE &bull; SALES.SE_REPORTING.DIM_USE_CASE_HISTORY_DS &bull; SALES.REPORTING.PEAK_USE_CASE_TARGETS &bull; SALES.REPORTING.CORE_PRODUCT_CATEGORY_CONSUMPTION &bull; AMSExpansion / Mark Fleming GVP</p>
+
+</body>
+</html>

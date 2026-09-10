@@ -1,0 +1,1299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>NW+SW Forecast Learning Guide — Q3 FY27</title>
+<style>
+* { box-sizing:border-box; margin:0; padding:0; }
+body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+       background:#f0f2f5;color:#1a1a2e;padding:24px; }
+h1 { font-size:1.7em;color:#1a1a2e;margin-bottom:4px; }
+.subtitle { color:#666;font-size:0.9em;margin-bottom:24px; }
+.badge { display:inline-block;background:#29B5E8;color:white;padding:3px 10px;
+         border-radius:12px;font-size:0.78em;font-weight:600;margin-left:8px;vertical-align:middle; }
+.section-title { font-size:1.05em;font-weight:700;color:#1a1a2e;margin:28px 0 10px; }
+.card-wrap { background:white;border-radius:10px;padding:20px 24px;
+             box-shadow:0 2px 8px rgba(0,0,0,0.07);margin-bottom:22px; }
+.summary-grid { display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:22px; }
+.summary-card { background:white;border-radius:10px;padding:18px 22px;
+                box-shadow:0 2px 8px rgba(0,0,0,0.07);border-top:4px solid #ccc; }
+.region-label { font-size:0.72em;text-transform:uppercase;letter-spacing:0.5px;color:#888;margin-bottom:4px; }
+.region-name  { font-size:1.15em;font-weight:700;color:#1a1a2e;margin-bottom:8px; }
+.forecast-row { display:flex;gap:16px;margin-top:8px; }
+.fc-item { flex:1;text-align:center;background:#f8f9fa;border-radius:6px;padding:10px; }
+.fc-lbl  { font-size:0.68em;text-transform:uppercase;color:#888;margin-bottom:3px; }
+.fc-val  { font-size:1.35em;font-weight:700; }
+.wk-table { width:100%;border-collapse:collapse;font-size:0.82em; }
+.wk-table th { background:#1a1a2e;color:white;padding:8px 4px;text-align:center;font-size:0.75em; }
+.wk-table th:first-child { text-align:left;padding-left:10px; }
+.wk-table th:last-child  { text-align:center; }
+.legend { display:flex;gap:16px;font-size:0.76em;color:#666;margin-top:10px; }
+.legend span::before { content:'●';margin-right:4px; }
+.district-grid { display:grid;grid-template-columns:repeat(4,1fr);gap:14px; }
+.insight { background:#e8f4fd;border-left:3px solid #29B5E8;
+           padding:12px 16px;border-radius:4px;font-size:0.82em;
+           color:#1a4a6b;margin-top:14px;line-height:1.6; }
+.insight strong { color:#1a1a2e; }
+.warn { color:#c0392b;font-weight:600; }
+.ok   { color:#27ae60;font-weight:600; }
+</style>
+</head>
+<body>
+
+<h1>NW + SW Forecast Learning Guide <span class="badge">AMSExpansion</span></h1>
+<p class="subtitle">Q3 FY27 (Aug 1 – Oct 31, 2026) &mdash; Day 12 of 91 &mdash;
+NorthwestExp (D. Kuvelis) &amp; SouthwestExp (A. Sadowski) &mdash; As of August 12, 2026</p>
+
+<!-- Regional Summary -->
+<div class="section-title">Q3 FY27 Forecast — By Region</div>
+<div class="summary-grid">
+  
+  <div class="summary-card" style="border-top-color:#17a2b8">
+    <div class="region-label">Region</div>
+    <div class="region-name">NorthwestExp <span style="font-size:0.7em;color:#888;font-weight:400;">106 UCs &bull; $33M Q3 pipeline</span></div>
+    <div class="forecast-row">
+      <div class="fc-item">
+        <div class="fc-lbl">Commit<br><span style="color:#aaa;">Pipeline Risk</span></div>
+        <div class="fc-val" style="color:#e67e22;">$16M</div>
+      </div>
+      <div class="fc-item">
+        <div class="fc-lbl">Most Likely<br><span style="color:#aaa;">Weighted Ensemble</span></div>
+        <div class="fc-val" style="color:#27ae60;">$21M</div>
+        <div style="font-size:0.72em;color:#27ae60;">105% of $19.8M target</div>
+      </div>
+      <div class="fc-item">
+        <div class="fc-lbl">Stretch<br><span style="color:#aaa;">Total pipeline</span></div>
+        <div class="fc-val" style="color:#1d8ab5;">$30M</div>
+      </div>
+    </div>
+  </div>
+  
+  <div class="summary-card" style="border-top-color:#6f42c1">
+    <div class="region-label">Region</div>
+    <div class="region-name">SouthwestExp <span style="font-size:0.7em;color:#888;font-weight:400;">158 UCs &bull; $18M Q3 pipeline</span></div>
+    <div class="forecast-row">
+      <div class="fc-item">
+        <div class="fc-lbl">Commit<br><span style="color:#aaa;">Pipeline Risk</span></div>
+        <div class="fc-val" style="color:#e67e22;">$8.4M</div>
+      </div>
+      <div class="fc-item">
+        <div class="fc-lbl">Most Likely<br><span style="color:#aaa;">Weighted Ensemble</span></div>
+        <div class="fc-val" style="color:#c0392b;">$12M</div>
+        <div style="font-size:0.72em;color:#c0392b;">68% of $17.8M target</div>
+      </div>
+      <div class="fc-item">
+        <div class="fc-lbl">Stretch<br><span style="color:#aaa;">Total pipeline</span></div>
+        <div class="fc-val" style="color:#1d8ab5;">$16M</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Week-by-Week Teaching Section -->
+<div class="section-title">Week-by-Week Pipeline → Go-Live Conversion
+  <span style="font-size:0.72em;font-weight:400;color:#888;margin-left:8px;">
+    How does pipeline at each week of the quarter relate to final deployed? (Q2 FY26 &rarr; Q3 FY27)
+  </span>
+</div>
+<div class="card-wrap">
+  <p style="font-size:0.8em;color:#555;margin-bottom:14px;">
+    Each cell shows the <strong>total open pipeline</strong> for NW+SW at that week, with a mini-bar
+    (teal = IMP, gold = TW, gray = Pre-TW). The <strong>"X% conv"</strong> label is the
+    <em>true conversion rate</em> — of the specific UCs visible in pipeline at that week,
+    what % of their ACV actually deployed by quarter end. This rises over the quarter as
+    UCs that will slip have already been removed or date-pushed, leaving a higher-quality pool.
+  </p>
+  <table class="wk-table">
+    <thead>
+      <tr>
+        <th style="text-align:left;padding-left:10px;">Quarter</th>
+        <th>Wk 1</th><th>Wk 2</th><th>Wk 3</th><th>Wk 4</th><th>Wk 5</th><th>Wk 6</th><th>Wk 7</th><th>Wk 8</th><th>Wk 9</th><th>Wk 10</th><th>Wk 11</th><th>Wk 12</th><th>Wk 13</th>
+        <th>Final<br>Deployed</th>
+      </tr>
+    </thead>
+    <tbody>
+      
+    <tr style="border-bottom:1px solid #eee;">
+      <td style="padding:8px 10px;font-weight:700;color:#29B5E8;white-space:nowrap;">Q2 FY26</td>
+      
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#e67e22;">46%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:15px;margin:3px 0;">
+            <div style="width:10px;background:#17a2b8;"></div>
+            <div style="width:2px;background:#ffc107;"></div>
+            <div style="width:3px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$15M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#e67e22;">51%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:14px;margin:3px 0;">
+            <div style="width:10px;background:#17a2b8;"></div>
+            <div style="width:1px;background:#ffc107;"></div>
+            <div style="width:3px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$14M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#e67e22;">52%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:15px;margin:3px 0;">
+            <div style="width:11px;background:#17a2b8;"></div>
+            <div style="width:1px;background:#ffc107;"></div>
+            <div style="width:3px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$15M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#e67e22;">53%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:15px;margin:3px 0;">
+            <div style="width:11px;background:#17a2b8;"></div>
+            <div style="width:1px;background:#ffc107;"></div>
+            <div style="width:3px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$15M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#e67e22;">51%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:15px;margin:3px 0;">
+            <div style="width:11px;background:#17a2b8;"></div>
+            <div style="width:1px;background:#ffc107;"></div>
+            <div style="width:3px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$16M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#e67e22;">50%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:17px;margin:3px 0;">
+            <div style="width:13px;background:#17a2b8;"></div>
+            <div style="width:1px;background:#ffc107;"></div>
+            <div style="width:3px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$17M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#e67e22;">50%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:17px;margin:3px 0;">
+            <div style="width:13px;background:#17a2b8;"></div>
+            <div style="width:2px;background:#ffc107;"></div>
+            <div style="width:2px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$17M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#e67e22;">52%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:16px;margin:3px 0;">
+            <div style="width:12px;background:#17a2b8;"></div>
+            <div style="width:1px;background:#ffc107;"></div>
+            <div style="width:3px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$17M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#e67e22;">54%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:16px;margin:3px 0;">
+            <div style="width:12px;background:#17a2b8;"></div>
+            <div style="width:2px;background:#ffc107;"></div>
+            <div style="width:2px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$17M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#e67e22;">53%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:15px;margin:3px 0;">
+            <div style="width:13px;background:#17a2b8;"></div>
+            <div style="width:0px;background:#ffc107;"></div>
+            <div style="width:2px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$15M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#27ae60;">64%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:11px;margin:3px 0;">
+            <div style="width:9px;background:#17a2b8;"></div>
+            <div style="width:0px;background:#ffc107;"></div>
+            <div style="width:2px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$11M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#e67e22;">56%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:7px;margin:3px 0;">
+            <div style="width:6px;background:#17a2b8;"></div>
+            <div style="width:0px;background:#ffc107;"></div>
+            <div style="width:1px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$7.6M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#c0392b;">36%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:4px;margin:3px 0;">
+            <div style="width:3px;background:#17a2b8;"></div>
+            <div style="width:0px;background:#ffc107;"></div>
+            <div style="width:1px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$4.8M</div>
+        </td>
+      <td style="padding:8px 10px;text-align:center;font-weight:700;color:#27ae60;font-size:0.9em;">$19M</td>
+    </tr>
+    <tr style="border-bottom:1px solid #eee;">
+      <td style="padding:8px 10px;font-weight:700;color:#e67e22;white-space:nowrap;">Q3 FY26</td>
+      
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#e67e22;">42%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:33px;margin:3px 0;">
+            <div style="width:22px;background:#17a2b8;"></div>
+            <div style="width:5px;background:#ffc107;"></div>
+            <div style="width:6px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$34M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#e67e22;">44%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:32px;margin:3px 0;">
+            <div style="width:23px;background:#17a2b8;"></div>
+            <div style="width:4px;background:#ffc107;"></div>
+            <div style="width:5px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$32M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#e67e22;">46%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:30px;margin:3px 0;">
+            <div style="width:23px;background:#17a2b8;"></div>
+            <div style="width:3px;background:#ffc107;"></div>
+            <div style="width:4px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$31M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#e67e22;">49%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:27px;margin:3px 0;">
+            <div style="width:21px;background:#17a2b8;"></div>
+            <div style="width:3px;background:#ffc107;"></div>
+            <div style="width:3px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$28M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#e67e22;">53%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:25px;margin:3px 0;">
+            <div style="width:21px;background:#17a2b8;"></div>
+            <div style="width:2px;background:#ffc107;"></div>
+            <div style="width:2px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$25M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#e67e22;">51%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:22px;margin:3px 0;">
+            <div style="width:18px;background:#17a2b8;"></div>
+            <div style="width:1px;background:#ffc107;"></div>
+            <div style="width:3px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$23M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#e67e22;">56%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:19px;margin:3px 0;">
+            <div style="width:17px;background:#17a2b8;"></div>
+            <div style="width:1px;background:#ffc107;"></div>
+            <div style="width:1px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$19M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#e67e22;">57%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:15px;margin:3px 0;">
+            <div style="width:14px;background:#17a2b8;"></div>
+            <div style="width:0px;background:#ffc107;"></div>
+            <div style="width:1px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$15M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#27ae60;">61%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:12px;margin:3px 0;">
+            <div style="width:11px;background:#17a2b8;"></div>
+            <div style="width:0px;background:#ffc107;"></div>
+            <div style="width:1px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$12M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#e67e22;">59%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:8px;margin:3px 0;">
+            <div style="width:7px;background:#17a2b8;"></div>
+            <div style="width:0px;background:#ffc107;"></div>
+            <div style="width:1px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$8.8M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#27ae60;">65%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:8px;margin:3px 0;">
+            <div style="width:7px;background:#17a2b8;"></div>
+            <div style="width:0px;background:#ffc107;"></div>
+            <div style="width:1px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$8.7M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#27ae60;">64%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:7px;margin:3px 0;">
+            <div style="width:6px;background:#17a2b8;"></div>
+            <div style="width:0px;background:#ffc107;"></div>
+            <div style="width:1px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$7.0M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#e67e22;">57%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:3px;margin:3px 0;">
+            <div style="width:3px;background:#17a2b8;"></div>
+            <div style="width:0px;background:#ffc107;"></div>
+            <div style="width:0px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$3.8M</div>
+        </td>
+      <td style="padding:8px 10px;text-align:center;font-weight:700;color:#27ae60;font-size:0.9em;">$25M</td>
+    </tr>
+    <tr style="border-bottom:1px solid #eee;">
+      <td style="padding:8px 10px;font-weight:700;color:#27ae60;white-space:nowrap;">Q4 FY26</td>
+      
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#e67e22;">51%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:45px;margin:3px 0;">
+            <div style="width:31px;background:#17a2b8;"></div>
+            <div style="width:6px;background:#ffc107;"></div>
+            <div style="width:8px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$45M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#e67e22;">52%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:41px;margin:3px 0;">
+            <div style="width:29px;background:#17a2b8;"></div>
+            <div style="width:5px;background:#ffc107;"></div>
+            <div style="width:7px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$42M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#e67e22;">55%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:38px;margin:3px 0;">
+            <div style="width:28px;background:#17a2b8;"></div>
+            <div style="width:3px;background:#ffc107;"></div>
+            <div style="width:7px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$38M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#e67e22;">55%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:33px;margin:3px 0;">
+            <div style="width:24px;background:#17a2b8;"></div>
+            <div style="width:5px;background:#ffc107;"></div>
+            <div style="width:4px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$33M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#e67e22;">59%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:28px;margin:3px 0;">
+            <div style="width:21px;background:#17a2b8;"></div>
+            <div style="width:5px;background:#ffc107;"></div>
+            <div style="width:2px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$28M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#e67e22;">58%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:26px;margin:3px 0;">
+            <div style="width:22px;background:#17a2b8;"></div>
+            <div style="width:2px;background:#ffc107;"></div>
+            <div style="width:2px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$26M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#27ae60;">74%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:18px;margin:3px 0;">
+            <div style="width:16px;background:#17a2b8;"></div>
+            <div style="width:1px;background:#ffc107;"></div>
+            <div style="width:1px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$18M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#27ae60;">76%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:14px;margin:3px 0;">
+            <div style="width:13px;background:#17a2b8;"></div>
+            <div style="width:0px;background:#ffc107;"></div>
+            <div style="width:1px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$14M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#27ae60;">76%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:13px;margin:3px 0;">
+            <div style="width:12px;background:#17a2b8;"></div>
+            <div style="width:0px;background:#ffc107;"></div>
+            <div style="width:1px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$14M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#27ae60;">76%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:13px;margin:3px 0;">
+            <div style="width:12px;background:#17a2b8;"></div>
+            <div style="width:0px;background:#ffc107;"></div>
+            <div style="width:1px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$14M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#27ae60;">82%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:9px;margin:3px 0;">
+            <div style="width:8px;background:#17a2b8;"></div>
+            <div style="width:0px;background:#ffc107;"></div>
+            <div style="width:1px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$9.0M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#27ae60;">90%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:3px;margin:3px 0;">
+            <div style="width:3px;background:#17a2b8;"></div>
+            <div style="width:0px;background:#ffc107;"></div>
+            <div style="width:0px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$3.9M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#27ae60;">82%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:3px;margin:3px 0;">
+            <div style="width:3px;background:#17a2b8;"></div>
+            <div style="width:0px;background:#ffc107;"></div>
+            <div style="width:0px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$3.8M</div>
+        </td>
+      <td style="padding:8px 10px;text-align:center;font-weight:700;color:#27ae60;font-size:0.9em;">$34M</td>
+    </tr>
+    <tr style="border-bottom:1px solid #eee;">
+      <td style="padding:8px 10px;font-weight:700;color:#e74c3c;white-space:nowrap;">Q1 FY27</td>
+      
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#e67e22;">43%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:35px;margin:3px 0;">
+            <div style="width:22px;background:#17a2b8;"></div>
+            <div style="width:6px;background:#ffc107;"></div>
+            <div style="width:7px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$35M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#e67e22;">47%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:36px;margin:3px 0;">
+            <div style="width:26px;background:#17a2b8;"></div>
+            <div style="width:4px;background:#ffc107;"></div>
+            <div style="width:6px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$36M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#e67e22;">47%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:36px;margin:3px 0;">
+            <div style="width:26px;background:#17a2b8;"></div>
+            <div style="width:4px;background:#ffc107;"></div>
+            <div style="width:6px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$36M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#e67e22;">49%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:28px;margin:3px 0;">
+            <div style="width:22px;background:#17a2b8;"></div>
+            <div style="width:4px;background:#ffc107;"></div>
+            <div style="width:2px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$29M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#e67e22;">56%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:23px;margin:3px 0;">
+            <div style="width:19px;background:#17a2b8;"></div>
+            <div style="width:2px;background:#ffc107;"></div>
+            <div style="width:2px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$23M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#e67e22;">54%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:20px;margin:3px 0;">
+            <div style="width:18px;background:#17a2b8;"></div>
+            <div style="width:1px;background:#ffc107;"></div>
+            <div style="width:1px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$21M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#e67e22;">56%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:17px;margin:3px 0;">
+            <div style="width:16px;background:#17a2b8;"></div>
+            <div style="width:0px;background:#ffc107;"></div>
+            <div style="width:1px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$17M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#e67e22;">55%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:16px;margin:3px 0;">
+            <div style="width:15px;background:#17a2b8;"></div>
+            <div style="width:0px;background:#ffc107;"></div>
+            <div style="width:1px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$16M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#e67e22;">51%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:10px;margin:3px 0;">
+            <div style="width:10px;background:#17a2b8;"></div>
+            <div style="width:0px;background:#ffc107;"></div>
+            <div style="width:0px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$10M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#e67e22;">58%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:8px;margin:3px 0;">
+            <div style="width:8px;background:#17a2b8;"></div>
+            <div style="width:0px;background:#ffc107;"></div>
+            <div style="width:0px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$8.3M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#e67e22;">59%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:8px;margin:3px 0;">
+            <div style="width:8px;background:#17a2b8;"></div>
+            <div style="width:0px;background:#ffc107;"></div>
+            <div style="width:0px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$8.2M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#27ae60;">62%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:5px;margin:3px 0;">
+            <div style="width:5px;background:#17a2b8;"></div>
+            <div style="width:0px;background:#ffc107;"></div>
+            <div style="width:0px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$5.4M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#e67e22;">54%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:3px;margin:3px 0;">
+            <div style="width:3px;background:#17a2b8;"></div>
+            <div style="width:0px;background:#ffc107;"></div>
+            <div style="width:0px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$3.4M</div>
+        </td>
+      <td style="padding:8px 10px;text-align:center;font-weight:700;color:#27ae60;font-size:0.9em;">$29M</td>
+    </tr>
+    <tr style="border-bottom:1px solid #eee;">
+      <td style="padding:8px 10px;font-weight:700;color:#6f42c1;white-space:nowrap;">Q2 FY27</td>
+      
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#27ae60;">61%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:42px;margin:3px 0;">
+            <div style="width:30px;background:#17a2b8;"></div>
+            <div style="width:5px;background:#ffc107;"></div>
+            <div style="width:7px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$42M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#27ae60;">62%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:44px;margin:3px 0;">
+            <div style="width:33px;background:#17a2b8;"></div>
+            <div style="width:4px;background:#ffc107;"></div>
+            <div style="width:7px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$44M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#27ae60;">65%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:42px;margin:3px 0;">
+            <div style="width:34px;background:#17a2b8;"></div>
+            <div style="width:4px;background:#ffc107;"></div>
+            <div style="width:4px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$42M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#27ae60;">64%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:39px;margin:3px 0;">
+            <div style="width:32px;background:#17a2b8;"></div>
+            <div style="width:4px;background:#ffc107;"></div>
+            <div style="width:3px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$39M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#27ae60;">63%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:35px;margin:3px 0;">
+            <div style="width:29px;background:#17a2b8;"></div>
+            <div style="width:4px;background:#ffc107;"></div>
+            <div style="width:2px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$36M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#27ae60;">61%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:33px;margin:3px 0;">
+            <div style="width:28px;background:#17a2b8;"></div>
+            <div style="width:3px;background:#ffc107;"></div>
+            <div style="width:2px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$33M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#e67e22;">58%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:29px;margin:3px 0;">
+            <div style="width:25px;background:#17a2b8;"></div>
+            <div style="width:2px;background:#ffc107;"></div>
+            <div style="width:2px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$30M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#e67e22;">57%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:24px;margin:3px 0;">
+            <div style="width:21px;background:#17a2b8;"></div>
+            <div style="width:1px;background:#ffc107;"></div>
+            <div style="width:2px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$24M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#e67e22;">57%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:21px;margin:3px 0;">
+            <div style="width:19px;background:#17a2b8;"></div>
+            <div style="width:0px;background:#ffc107;"></div>
+            <div style="width:2px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$21M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#27ae60;">62%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:18px;margin:3px 0;">
+            <div style="width:17px;background:#17a2b8;"></div>
+            <div style="width:0px;background:#ffc107;"></div>
+            <div style="width:1px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$18M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#27ae60;">68%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:15px;margin:3px 0;">
+            <div style="width:14px;background:#17a2b8;"></div>
+            <div style="width:0px;background:#ffc107;"></div>
+            <div style="width:1px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$15M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#27ae60;">73%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:12px;margin:3px 0;">
+            <div style="width:11px;background:#17a2b8;"></div>
+            <div style="width:0px;background:#ffc107;"></div>
+            <div style="width:1px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$12M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#27ae60;">64%</div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:6px;margin:3px 0;">
+            <div style="width:6px;background:#17a2b8;"></div>
+            <div style="width:0px;background:#ffc107;"></div>
+            <div style="width:0px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$6.7M</div>
+        </td>
+      <td style="padding:8px 10px;text-align:center;font-weight:700;color:#27ae60;font-size:0.9em;">$37M</td>
+    </tr>
+    <tr style="border-bottom:1px solid #eee;">
+      <td style="padding:8px 10px;font-weight:700;color:#888;white-space:nowrap;">Q3 FY27 ▶</td>
+      
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#888;"></div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:60px;margin:3px 0;">
+            <div style="width:42px;background:#17a2b8;"></div>
+            <div style="width:5px;background:#ffc107;"></div>
+            <div style="width:13px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$60M</div>
+        </td>
+        <td style="padding:6px 4px;text-align:center;vertical-align:middle;">
+          <div style="font-size:1.0em;font-weight:700;color:#888;"></div>
+          <div style="display:inline-flex;height:6px;border-radius:3px;overflow:hidden;width:54px;margin:3px 0;">
+            <div style="width:38px;background:#17a2b8;"></div>
+            <div style="width:7px;background:#ffc107;"></div>
+            <div style="width:9px;background:#e9ecef;"></div>
+          </div>
+          <div style="font-size:0.68em;color:#aaa;">$55M</div>
+        </td><td style="text-align:center;color:#ccc;font-size:0.8em;">—</td><td style="text-align:center;color:#ccc;font-size:0.8em;">—</td><td style="text-align:center;color:#ccc;font-size:0.8em;">—</td><td style="text-align:center;color:#ccc;font-size:0.8em;">—</td><td style="text-align:center;color:#ccc;font-size:0.8em;">—</td><td style="text-align:center;color:#ccc;font-size:0.8em;">—</td><td style="text-align:center;color:#ccc;font-size:0.8em;">—</td><td style="text-align:center;color:#ccc;font-size:0.8em;">—</td><td style="text-align:center;color:#ccc;font-size:0.8em;">—</td><td style="text-align:center;color:#ccc;font-size:0.8em;">—</td><td style="text-align:center;color:#ccc;font-size:0.8em;">—</td>
+      <td style="padding:8px 10px;text-align:center;font-weight:700;color:#27ae60;font-size:0.9em;">—</td>
+    </tr>
+      <tr style="background:#f8f9fa;border-top:2px solid #ddd;">
+        <td style="padding:8px 10px;font-size:0.78em;color:#888;font-style:italic;">Avg conv %</td>
+        <td style="text-align:center;font-weight:700;color:#e67e22;font-size:0.85em;">49%</td><td style="text-align:center;font-weight:700;color:#e67e22;font-size:0.85em;">51%</td><td style="text-align:center;font-weight:700;color:#e67e22;font-size:0.85em;">53%</td><td style="text-align:center;font-weight:700;color:#e67e22;font-size:0.85em;">54%</td><td style="text-align:center;font-weight:700;color:#e67e22;font-size:0.85em;">56%</td><td style="text-align:center;font-weight:700;color:#e67e22;font-size:0.85em;">55%</td><td style="text-align:center;font-weight:700;color:#e67e22;font-size:0.85em;">59%</td><td style="text-align:center;font-weight:700;color:#e67e22;font-size:0.85em;">59%</td><td style="text-align:center;font-weight:700;color:#e67e22;font-size:0.85em;">60%</td><td style="text-align:center;font-weight:700;color:#27ae60;font-size:0.85em;">61%</td><td style="text-align:center;font-weight:700;color:#27ae60;font-size:0.85em;">67%</td><td style="text-align:center;font-weight:700;color:#27ae60;font-size:0.85em;">69%</td><td style="text-align:center;font-weight:700;color:#e67e22;font-size:0.85em;">59%</td>
+        <td></td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="legend">
+    <span style="color:#17a2b8;">IMP (Implementation In Progress)</span>
+    <span style="color:#ffc107;">TW (Post Tech Win, Pre-IMP)</span>
+    <span style="color:#aaa;">Pre-TW (Stage 1-3)</span>
+  </div>
+  <div class="insight"><strong>Teaching insight:</strong> At <strong>week 4</strong>, NW+SW historically deploys <strong>54%</strong> of remaining pipeline by quarter end. By <strong>week 8</strong>, that rises to <strong>59%</strong> — the pipeline is mostly composed of UCs deep in Implementation that are on track. If you see IMP pipeline dropping off faster than usual by week 6, check for stale IMP UCs holding down the conversion rate.</div>
+</div>
+
+<!-- Pipeline Sources Section -->
+<div class="section-title">Where Does Deployed ACV Come From?
+  <span style="font-size:0.72em;font-weight:400;color:#888;margin-left:8px;">
+    On average, only ~58% of what deploys was visible at the start of the quarter
+  </span>
+</div>
+<div class="card-wrap">
+  <p style="font-size:0.8em;color:#555;margin-bottom:16px;">
+    For each completed quarter, what fraction of final deployed ACV was visible in the week-1 pipeline
+    vs arrived from <strong>pull-ins</strong> (UCs that existed but had their go-live date moved into
+    the quarter) or <strong>new UCs</strong> (created from scratch and deployed within the same quarter).
+    This is why the forecast model uses a new-pipeline uplift — your week-1 pipeline is not the ceiling.
+  </p>
+  <table style="width:100%;border-collapse:collapse;font-size:0.85em;">
+    <thead>
+      <tr style="background:#1a1a2e;color:white;">
+        <th style="padding:9px 12px;text-align:left;">Quarter</th>
+        <th style="padding:9px 12px;text-align:left;">Deployed ACV Source (% of final)</th>
+        <th style="padding:9px 12px;text-align:right;">Wk-1 Pipeline</th>
+        <th style="padding:9px 12px;text-align:right;">Pull-ins</th>
+        <th style="padding:9px 12px;text-align:right;">New UCs</th>
+      </tr>
+    </thead>
+    <tbody>
+      
+      <tr style="border-bottom:1px solid #eee;">
+        <td style="padding:9px 12px;font-weight:600;">Q2 FY26</td>
+        <td style="padding:9px 12px;">
+          <div style="display:flex;height:20px;border-radius:4px;overflow:hidden;width:100%;">
+            <div style="width:55.7%;background:#17a2b8;display:flex;align-items:center;
+                        justify-content:center;font-size:0.72em;color:white;font-weight:700;white-space:nowrap;overflow:hidden;">
+              56%
+            </div>
+            <div style="width:31.1%;background:#f0a070;display:flex;align-items:center;
+                        justify-content:center;font-size:0.72em;color:white;font-weight:700;white-space:nowrap;overflow:hidden;">
+              31%
+            </div>
+            <div style="width:13.2%;background:#27ae60;display:flex;align-items:center;
+                        justify-content:center;font-size:0.72em;color:white;font-weight:700;white-space:nowrap;overflow:hidden;">
+              13%
+            </div>
+          </div>
+        </td>
+        <td style="padding:9px 12px;text-align:right;font-weight:700;color:#17a2b8;">55.7%</td>
+        <td style="padding:9px 12px;text-align:right;font-weight:700;color:#e67e22;">31.1%</td>
+        <td style="padding:9px 12px;text-align:right;font-weight:700;color:#27ae60;">13.2%</td>
+      </tr>
+      <tr style="border-bottom:1px solid #eee;">
+        <td style="padding:9px 12px;font-weight:600;">Q3 FY26</td>
+        <td style="padding:9px 12px;">
+          <div style="display:flex;height:20px;border-radius:4px;overflow:hidden;width:100%;">
+            <div style="width:57.6%;background:#17a2b8;display:flex;align-items:center;
+                        justify-content:center;font-size:0.72em;color:white;font-weight:700;white-space:nowrap;overflow:hidden;">
+              58%
+            </div>
+            <div style="width:34.7%;background:#f0a070;display:flex;align-items:center;
+                        justify-content:center;font-size:0.72em;color:white;font-weight:700;white-space:nowrap;overflow:hidden;">
+              35%
+            </div>
+            <div style="width:7.7%;background:#27ae60;display:flex;align-items:center;
+                        justify-content:center;font-size:0.72em;color:white;font-weight:700;white-space:nowrap;overflow:hidden;">
+              8%
+            </div>
+          </div>
+        </td>
+        <td style="padding:9px 12px;text-align:right;font-weight:700;color:#17a2b8;">57.6%</td>
+        <td style="padding:9px 12px;text-align:right;font-weight:700;color:#e67e22;">34.7%</td>
+        <td style="padding:9px 12px;text-align:right;font-weight:700;color:#27ae60;">7.7%</td>
+      </tr>
+      <tr style="border-bottom:1px solid #eee;">
+        <td style="padding:9px 12px;font-weight:600;">Q4 FY26</td>
+        <td style="padding:9px 12px;">
+          <div style="display:flex;height:20px;border-radius:4px;overflow:hidden;width:100%;">
+            <div style="width:62.0%;background:#17a2b8;display:flex;align-items:center;
+                        justify-content:center;font-size:0.72em;color:white;font-weight:700;white-space:nowrap;overflow:hidden;">
+              62%
+            </div>
+            <div style="width:29.4%;background:#f0a070;display:flex;align-items:center;
+                        justify-content:center;font-size:0.72em;color:white;font-weight:700;white-space:nowrap;overflow:hidden;">
+              29%
+            </div>
+            <div style="width:8.6%;background:#27ae60;display:flex;align-items:center;
+                        justify-content:center;font-size:0.72em;color:white;font-weight:700;white-space:nowrap;overflow:hidden;">
+              9%
+            </div>
+          </div>
+        </td>
+        <td style="padding:9px 12px;text-align:right;font-weight:700;color:#17a2b8;">62.0%</td>
+        <td style="padding:9px 12px;text-align:right;font-weight:700;color:#e67e22;">29.4%</td>
+        <td style="padding:9px 12px;text-align:right;font-weight:700;color:#27ae60;">8.6%</td>
+      </tr>
+      <tr style="border-bottom:1px solid #eee;">
+        <td style="padding:9px 12px;font-weight:600;">Q1 FY27</td>
+        <td style="padding:9px 12px;">
+          <div style="display:flex;height:20px;border-radius:4px;overflow:hidden;width:100%;">
+            <div style="width:51.7%;background:#17a2b8;display:flex;align-items:center;
+                        justify-content:center;font-size:0.72em;color:white;font-weight:700;white-space:nowrap;overflow:hidden;">
+              52%
+            </div>
+            <div style="width:26.7%;background:#f0a070;display:flex;align-items:center;
+                        justify-content:center;font-size:0.72em;color:white;font-weight:700;white-space:nowrap;overflow:hidden;">
+              27%
+            </div>
+            <div style="width:21.6%;background:#27ae60;display:flex;align-items:center;
+                        justify-content:center;font-size:0.72em;color:white;font-weight:700;white-space:nowrap;overflow:hidden;">
+              22%
+            </div>
+          </div>
+        </td>
+        <td style="padding:9px 12px;text-align:right;font-weight:700;color:#17a2b8;">51.7%</td>
+        <td style="padding:9px 12px;text-align:right;font-weight:700;color:#e67e22;">26.7%</td>
+        <td style="padding:9px 12px;text-align:right;font-weight:700;color:#27ae60;">21.6%</td>
+      </tr>
+      <tr style="border-bottom:1px solid #eee;">
+        <td style="padding:9px 12px;font-weight:600;">Q2 FY27</td>
+        <td style="padding:9px 12px;">
+          <div style="display:flex;height:20px;border-radius:4px;overflow:hidden;width:100%;">
+            <div style="width:65.3%;background:#17a2b8;display:flex;align-items:center;
+                        justify-content:center;font-size:0.72em;color:white;font-weight:700;white-space:nowrap;overflow:hidden;">
+              65%
+            </div>
+            <div style="width:20.7%;background:#f0a070;display:flex;align-items:center;
+                        justify-content:center;font-size:0.72em;color:white;font-weight:700;white-space:nowrap;overflow:hidden;">
+              21%
+            </div>
+            <div style="width:14.0%;background:#27ae60;display:flex;align-items:center;
+                        justify-content:center;font-size:0.72em;color:white;font-weight:700;white-space:nowrap;overflow:hidden;">
+              14%
+            </div>
+          </div>
+        </td>
+        <td style="padding:9px 12px;text-align:right;font-weight:700;color:#17a2b8;">65.3%</td>
+        <td style="padding:9px 12px;text-align:right;font-weight:700;color:#e67e22;">20.7%</td>
+        <td style="padding:9px 12px;text-align:right;font-weight:700;color:#27ae60;">14.0%</td>
+      </tr>
+      <tr style="background:#f0f2f5;font-weight:700;">
+        <td style="padding:9px 12px;">Average</td>
+        <td style="padding:9px 12px;">
+          <div style="display:flex;height:20px;border-radius:4px;overflow:hidden;width:100%;">
+            <div style="width:58.5%;background:#17a2b8;display:flex;align-items:center;justify-content:center;font-size:0.72em;color:white;font-weight:700;">58.5%</div>
+            <div style="width:28.5%;background:#f0a070;display:flex;align-items:center;justify-content:center;font-size:0.72em;color:white;font-weight:700;">28.5%</div>
+            <div style="width:13.0%;background:#27ae60;display:flex;align-items:center;justify-content:center;font-size:0.72em;color:white;font-weight:700;">13%</div>
+          </div>
+        </td>
+        <td style="padding:9px 12px;text-align:right;color:#17a2b8;">58.5%</td>
+        <td style="padding:9px 12px;text-align:right;color:#e67e22;">28.5%</td>
+        <td style="padding:9px 12px;text-align:right;color:#27ae60;">13.0%</td>
+      </tr>
+    </tbody>
+  </table>
+  <div style="display:flex;gap:20px;font-size:0.76em;color:#666;margin-top:10px;">
+    <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#17a2b8;margin-right:4px;vertical-align:middle;"></span>Week-1 pipeline (had Q-dated go-live at quarter start)</span>
+    <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#f0a070;margin-right:4px;vertical-align:middle;"></span>Pull-ins (existed but date moved into quarter)</span>
+    <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#27ae60;margin-right:4px;vertical-align:middle;"></span>New UCs (created &amp; deployed within the quarter)</span>
+  </div>
+  <div class="insight" style="margin-top:14px;">
+    <strong>Key takeaway for new SEMs:</strong> On average, <strong>41.5% of what deploys in a quarter
+    is not visible at the start.</strong> Pull-ins (~28.5%) are the largest source — these come from
+    SEs accelerating timelines or UCs moving faster than expected. New UCs (~13%) are created and
+    close within the same quarter. This is why your week-1 pipeline is a floor, not a ceiling,
+    and why the Stage Conversion model divides by (1 − 14.5%) to project final deployed.
+  </div>
+</div>
+
+<!-- District Cards -->
+<div class="section-title">Current Q3 FY27 Pipeline — By District</div>
+<p style="font-size:0.82em;color:#666;margin-bottom:12px;">
+  M4 = Weighted Ensemble of Pipeline Risk (56%) and Stage Conversion (44%) models.
+  Commit uses conservative (min) conversion rates. Stretch = total pipeline (max possible).
+</p>
+
+<p style="font-size:0.85em;font-weight:600;color:#17a2b8;margin-bottom:8px;">NorthwestExp (RVP: Dean Kuvelis)</p>
+<div class="district-grid" style="margin-bottom:20px;">
+  
+<div style="background:#f8f9fa;border-radius:8px;padding:16px;border-top:4px solid #17a2b8;">
+  <div style="font-size:0.95em;font-weight:700;color:#1a1a2e;margin-bottom:2px;">EntBayAreaTech2</div>
+  <div style="font-size:0.74em;color:#888;margin-bottom:10px;">38 UCs &bull; $10M pipeline &bull; Northwest</div>
+  <div style="display:flex;height:18px;border-radius:4px;overflow:hidden;margin-bottom:4px;">
+    <div style="width:42.5%;background:#17a2b8;"></div>
+    <div style="width:20.1%;background:#ffc107;"></div>
+    <div style="width:31.6%;background:#e9ecef;"></div>
+  </div>
+  <div style="display:flex;gap:8px;font-size:0.7em;color:#666;margin-bottom:10px;">
+    <span>&#9679; IMP $4.5M</span>
+    <span>&#9679; TW $2.1M</span>
+    <span>&#9679; Pre-TW $3.3M</span>
+  </div>
+  <div style="text-align:center;font-size:1.5em;font-weight:700;color:#27ae60;margin-bottom:2px;">$5.8M</div>
+  <div style="text-align:center;font-size:0.68em;text-transform:uppercase;color:#888;margin-bottom:8px;">M4 Most Likely (Weighted Ensemble)</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:0.72em;margin-bottom:8px;">
+    <div style="background:white;border-radius:4px;padding:4px;text-align:center;">
+      <div style="color:#aaa;font-size:0.82em;">Commit (Pipeline Risk)</div>
+      <div style="font-weight:600;color:#e67e22;">$4.2M</div>
+    </div>
+    <div style="background:white;border-radius:4px;padding:4px;text-align:center;">
+      <div style="color:#aaa;font-size:0.82em;">Stretch (cap at pipeline)</div>
+      <div style="font-weight:600;color:#1d8ab5;">$9.5M</div>
+    </div>
+  </div>
+  <div style="font-size:0.7em;color:#888;border-top:1px solid #e9ecef;padding-top:7px;display:flex;flex-direction:column;gap:3px;">
+    <span style="display:flex;justify-content:space-between;">
+      <span>Stale IMP (&gt;79d)</span>
+      <span class="warn" style="font-weight:600;color:#c0392b;">6 UCs / $3.4M</span>
+    </span>
+    <span style="display:flex;justify-content:space-between;">
+      <span>Stale TW (&gt;104d)</span>
+      <span style="font-weight:600;color:#27ae60;">0 UCs</span>
+    </span>
+    <span style="display:flex;justify-content:space-between;">
+      <span>No next steps</span>
+      <span style="font-weight:600;color:#c0392b;">3 UCs</span>
+    </span>
+  </div>
+</div>
+<div style="background:#f8f9fa;border-radius:8px;padding:16px;border-top:4px solid #17a2b8;">
+  <div style="font-size:0.95em;font-weight:700;color:#1a1a2e;margin-bottom:2px;">EntBayArea</div>
+  <div style="font-size:0.74em;color:#888;margin-bottom:10px;">17 UCs &bull; $9.1M pipeline &bull; Northwest</div>
+  <div style="display:flex;height:18px;border-radius:4px;overflow:hidden;margin-bottom:4px;">
+    <div style="width:89.0%;background:#17a2b8;"></div>
+    <div style="width:1.7%;background:#ffc107;"></div>
+    <div style="width:9.4%;background:#e9ecef;"></div>
+  </div>
+  <div style="display:flex;gap:8px;font-size:0.7em;color:#666;margin-bottom:10px;">
+    <span>&#9679; IMP $8.1M</span>
+    <span>&#9679; TW $0.1M</span>
+    <span>&#9679; Pre-TW $0.8M</span>
+  </div>
+  <div style="text-align:center;font-size:1.5em;font-weight:700;color:#27ae60;margin-bottom:2px;">$6.7M</div>
+  <div style="text-align:center;font-size:0.68em;text-transform:uppercase;color:#888;margin-bottom:8px;">M4 Most Likely (Weighted Ensemble)</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:0.72em;margin-bottom:8px;">
+    <div style="background:white;border-radius:4px;padding:4px;text-align:center;">
+      <div style="color:#aaa;font-size:0.82em;">Commit (Pipeline Risk)</div>
+      <div style="font-weight:600;color:#e67e22;">$5.8M</div>
+    </div>
+    <div style="background:white;border-radius:4px;padding:4px;text-align:center;">
+      <div style="color:#aaa;font-size:0.82em;">Stretch (cap at pipeline)</div>
+      <div style="font-weight:600;color:#1d8ab5;">$8.2M</div>
+    </div>
+  </div>
+  <div style="font-size:0.7em;color:#888;border-top:1px solid #e9ecef;padding-top:7px;display:flex;flex-direction:column;gap:3px;">
+    <span style="display:flex;justify-content:space-between;">
+      <span>Stale IMP (&gt;79d)</span>
+      <span class="warn" style="font-weight:600;color:#c0392b;">4 UCs / $4.3M</span>
+    </span>
+    <span style="display:flex;justify-content:space-between;">
+      <span>Stale TW (&gt;104d)</span>
+      <span style="font-weight:600;color:#27ae60;">0 UCs</span>
+    </span>
+    <span style="display:flex;justify-content:space-between;">
+      <span>No next steps</span>
+      <span style="font-weight:600;color:#555;">0 UCs</span>
+    </span>
+  </div>
+</div>
+<div style="background:#f8f9fa;border-radius:8px;padding:16px;border-top:4px solid #17a2b8;">
+  <div style="font-size:0.95em;font-weight:700;color:#1a1a2e;margin-bottom:2px;">EntPacNorthwest</div>
+  <div style="font-size:0.74em;color:#888;margin-bottom:10px;">33 UCs &bull; $8.6M pipeline &bull; Northwest</div>
+  <div style="display:flex;height:18px;border-radius:4px;overflow:hidden;margin-bottom:4px;">
+    <div style="width:38.1%;background:#17a2b8;"></div>
+    <div style="width:44.1%;background:#ffc107;"></div>
+    <div style="width:13.1%;background:#e9ecef;"></div>
+  </div>
+  <div style="display:flex;gap:8px;font-size:0.7em;color:#666;margin-bottom:10px;">
+    <span>&#9679; IMP $3.3M</span>
+    <span>&#9679; TW $3.8M</span>
+    <span>&#9679; Pre-TW $1.1M</span>
+  </div>
+  <div style="text-align:center;font-size:1.5em;font-weight:700;color:#27ae60;margin-bottom:2px;">$4.5M</div>
+  <div style="text-align:center;font-size:0.68em;text-transform:uppercase;color:#888;margin-bottom:8px;">M4 Most Likely (Weighted Ensemble)</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:0.72em;margin-bottom:8px;">
+    <div style="background:white;border-radius:4px;padding:4px;text-align:center;">
+      <div style="color:#aaa;font-size:0.82em;">Commit (Pipeline Risk)</div>
+      <div style="font-weight:600;color:#e67e22;">$3.3M</div>
+    </div>
+    <div style="background:white;border-radius:4px;padding:4px;text-align:center;">
+      <div style="color:#aaa;font-size:0.82em;">Stretch (cap at pipeline)</div>
+      <div style="font-weight:600;color:#1d8ab5;">$7.8M</div>
+    </div>
+  </div>
+  <div style="font-size:0.7em;color:#888;border-top:1px solid #e9ecef;padding-top:7px;display:flex;flex-direction:column;gap:3px;">
+    <span style="display:flex;justify-content:space-between;">
+      <span>Stale IMP (&gt;79d)</span>
+      <span class="warn" style="font-weight:600;color:#c0392b;">9 UCs / $2.5M</span>
+    </span>
+    <span style="display:flex;justify-content:space-between;">
+      <span>Stale TW (&gt;104d)</span>
+      <span style="font-weight:600;color:#c0392b;">1 UCs</span>
+    </span>
+    <span style="display:flex;justify-content:space-between;">
+      <span>No next steps</span>
+      <span style="font-weight:600;color:#555;">2 UCs</span>
+    </span>
+  </div>
+</div>
+<div style="background:#f8f9fa;border-radius:8px;padding:16px;border-top:4px solid #17a2b8;">
+  <div style="font-size:0.95em;font-weight:700;color:#1a1a2e;margin-bottom:2px;">EntBayAreaTech1</div>
+  <div style="font-size:0.74em;color:#888;margin-bottom:10px;">18 UCs &bull; $5.1M pipeline &bull; Northwest</div>
+  <div style="display:flex;height:18px;border-radius:4px;overflow:hidden;margin-bottom:4px;">
+    <div style="width:57.1%;background:#17a2b8;"></div>
+    <div style="width:20.2%;background:#ffc107;"></div>
+    <div style="width:12.8%;background:#e9ecef;"></div>
+  </div>
+  <div style="display:flex;gap:8px;font-size:0.7em;color:#666;margin-bottom:10px;">
+    <span>&#9679; IMP $2.9M</span>
+    <span>&#9679; TW $1.0M</span>
+    <span>&#9679; Pre-TW $0.7M</span>
+  </div>
+  <div style="text-align:center;font-size:1.5em;font-weight:700;color:#e67e22;margin-bottom:2px;">$3.7M</div>
+  <div style="text-align:center;font-size:0.68em;text-transform:uppercase;color:#888;margin-bottom:8px;">M4 Most Likely (Weighted Ensemble)</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:0.72em;margin-bottom:8px;">
+    <div style="background:white;border-radius:4px;padding:4px;text-align:center;">
+      <div style="color:#aaa;font-size:0.82em;">Commit (Pipeline Risk)</div>
+      <div style="font-weight:600;color:#e67e22;">$2.7M</div>
+    </div>
+    <div style="background:white;border-radius:4px;padding:4px;text-align:center;">
+      <div style="color:#aaa;font-size:0.82em;">Stretch (cap at pipeline)</div>
+      <div style="font-weight:600;color:#1d8ab5;">$4.6M</div>
+    </div>
+  </div>
+  <div style="font-size:0.7em;color:#888;border-top:1px solid #e9ecef;padding-top:7px;display:flex;flex-direction:column;gap:3px;">
+    <span style="display:flex;justify-content:space-between;">
+      <span>Stale IMP (&gt;79d)</span>
+      <span class="warn" style="font-weight:600;color:#c0392b;">2 UCs / $0.8M</span>
+    </span>
+    <span style="display:flex;justify-content:space-between;">
+      <span>Stale TW (&gt;104d)</span>
+      <span style="font-weight:600;color:#27ae60;">0 UCs</span>
+    </span>
+    <span style="display:flex;justify-content:space-between;">
+      <span>No next steps</span>
+      <span style="font-weight:600;color:#555;">0 UCs</span>
+    </span>
+  </div>
+</div>
+</div>
+
+<p style="font-size:0.85em;font-weight:600;color:#6f42c1;margin-bottom:8px;">SouthwestExp (RVP: Adam Sadowski)</p>
+<div class="district-grid">
+  
+<div style="background:#f8f9fa;border-radius:8px;padding:16px;border-top:4px solid #6f42c1;">
+  <div style="font-size:0.95em;font-weight:700;color:#1a1a2e;margin-bottom:2px;">EntHCLSWest</div>
+  <div style="font-size:0.74em;color:#888;margin-bottom:10px;">76 UCs &bull; $5.8M pipeline &bull; Southwest</div>
+  <div style="display:flex;height:18px;border-radius:4px;overflow:hidden;margin-bottom:4px;">
+    <div style="width:44.7%;background:#17a2b8;"></div>
+    <div style="width:14.3%;background:#ffc107;"></div>
+    <div style="width:30.2%;background:#e9ecef;"></div>
+  </div>
+  <div style="display:flex;gap:8px;font-size:0.7em;color:#666;margin-bottom:10px;">
+    <span>&#9679; IMP $2.6M</span>
+    <span>&#9679; TW $0.8M</span>
+    <span>&#9679; Pre-TW $1.8M</span>
+  </div>
+  <div style="text-align:center;font-size:1.5em;font-weight:700;color:#27ae60;margin-bottom:2px;">$4.2M</div>
+  <div style="text-align:center;font-size:0.68em;text-transform:uppercase;color:#888;margin-bottom:8px;">M4 Most Likely (Weighted Ensemble)</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:0.72em;margin-bottom:8px;">
+    <div style="background:white;border-radius:4px;padding:4px;text-align:center;">
+      <div style="color:#aaa;font-size:0.82em;">Commit (Pipeline Risk)</div>
+      <div style="font-weight:600;color:#e67e22;">$2.7M</div>
+    </div>
+    <div style="background:white;border-radius:4px;padding:4px;text-align:center;">
+      <div style="color:#aaa;font-size:0.82em;">Stretch (cap at pipeline)</div>
+      <div style="font-weight:600;color:#1d8ab5;">$5.3M</div>
+    </div>
+  </div>
+  <div style="font-size:0.7em;color:#888;border-top:1px solid #e9ecef;padding-top:7px;display:flex;flex-direction:column;gap:3px;">
+    <span style="display:flex;justify-content:space-between;">
+      <span>Stale IMP (&gt;79d)</span>
+      <span class="warn" style="font-weight:600;color:#c0392b;">17 UCs / $1.9M</span>
+    </span>
+    <span style="display:flex;justify-content:space-between;">
+      <span>Stale TW (&gt;104d)</span>
+      <span style="font-weight:600;color:#c0392b;">7 UCs</span>
+    </span>
+    <span style="display:flex;justify-content:space-between;">
+      <span>No next steps</span>
+      <span style="font-weight:600;color:#c0392b;">9 UCs</span>
+    </span>
+  </div>
+</div>
+<div style="background:#f8f9fa;border-radius:8px;padding:16px;border-top:4px solid #6f42c1;">
+  <div style="font-size:0.95em;font-weight:700;color:#1a1a2e;margin-bottom:2px;">EntLosAngeles</div>
+  <div style="font-size:0.74em;color:#888;margin-bottom:10px;">31 UCs &bull; $4.5M pipeline &bull; Southwest</div>
+  <div style="display:flex;height:18px;border-radius:4px;overflow:hidden;margin-bottom:4px;">
+    <div style="width:41.7%;background:#17a2b8;"></div>
+    <div style="width:34.4%;background:#ffc107;"></div>
+    <div style="width:20.5%;background:#e9ecef;"></div>
+  </div>
+  <div style="display:flex;gap:8px;font-size:0.7em;color:#666;margin-bottom:10px;">
+    <span>&#9679; IMP $1.9M</span>
+    <span>&#9679; TW $1.6M</span>
+    <span>&#9679; Pre-TW $0.9M</span>
+  </div>
+  <div style="text-align:center;font-size:1.5em;font-weight:700;color:#c0392b;margin-bottom:2px;">$2.6M</div>
+  <div style="text-align:center;font-size:0.68em;text-transform:uppercase;color:#888;margin-bottom:8px;">M4 Most Likely (Weighted Ensemble)</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:0.72em;margin-bottom:8px;">
+    <div style="background:white;border-radius:4px;padding:4px;text-align:center;">
+      <div style="color:#aaa;font-size:0.82em;">Commit (Pipeline Risk)</div>
+      <div style="font-weight:600;color:#e67e22;">$1.8M</div>
+    </div>
+    <div style="background:white;border-radius:4px;padding:4px;text-align:center;">
+      <div style="color:#aaa;font-size:0.82em;">Stretch (cap at pipeline)</div>
+      <div style="font-weight:600;color:#1d8ab5;">$4.1M</div>
+    </div>
+  </div>
+  <div style="font-size:0.7em;color:#888;border-top:1px solid #e9ecef;padding-top:7px;display:flex;flex-direction:column;gap:3px;">
+    <span style="display:flex;justify-content:space-between;">
+      <span>Stale IMP (&gt;79d)</span>
+      <span class="warn" style="font-weight:600;color:#c0392b;">5 UCs / $0.9M</span>
+    </span>
+    <span style="display:flex;justify-content:space-between;">
+      <span>Stale TW (&gt;104d)</span>
+      <span style="font-weight:600;color:#c0392b;">1 UCs</span>
+    </span>
+    <span style="display:flex;justify-content:space-between;">
+      <span>No next steps</span>
+      <span style="font-weight:600;color:#555;">2 UCs</span>
+    </span>
+  </div>
+</div>
+<div style="background:#f8f9fa;border-radius:8px;padding:16px;border-top:4px solid #6f42c1;">
+  <div style="font-size:0.95em;font-weight:700;color:#1a1a2e;margin-bottom:2px;">EntSouthWest</div>
+  <div style="font-size:0.74em;color:#888;margin-bottom:10px;">25 UCs &bull; $4.1M pipeline &bull; Southwest</div>
+  <div style="display:flex;height:18px;border-radius:4px;overflow:hidden;margin-bottom:4px;">
+    <div style="width:79.2%;background:#17a2b8;"></div>
+    <div style="width:9.2%;background:#ffc107;"></div>
+    <div style="width:11.0%;background:#e9ecef;"></div>
+  </div>
+  <div style="display:flex;gap:8px;font-size:0.7em;color:#666;margin-bottom:10px;">
+    <span>&#9679; IMP $3.2M</span>
+    <span>&#9679; TW $0.4M</span>
+    <span>&#9679; Pre-TW $0.5M</span>
+  </div>
+  <div style="text-align:center;font-size:1.5em;font-weight:700;color:#c0392b;margin-bottom:2px;">$3.0M</div>
+  <div style="text-align:center;font-size:0.68em;text-transform:uppercase;color:#888;margin-bottom:8px;">M4 Most Likely (Weighted Ensemble)</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:0.72em;margin-bottom:8px;">
+    <div style="background:white;border-radius:4px;padding:4px;text-align:center;">
+      <div style="color:#aaa;font-size:0.82em;">Commit (Pipeline Risk)</div>
+      <div style="font-weight:600;color:#e67e22;">$2.4M</div>
+    </div>
+    <div style="background:white;border-radius:4px;padding:4px;text-align:center;">
+      <div style="color:#aaa;font-size:0.82em;">Stretch (cap at pipeline)</div>
+      <div style="font-weight:600;color:#1d8ab5;">$3.7M</div>
+    </div>
+  </div>
+  <div style="font-size:0.7em;color:#888;border-top:1px solid #e9ecef;padding-top:7px;display:flex;flex-direction:column;gap:3px;">
+    <span style="display:flex;justify-content:space-between;">
+      <span>Stale IMP (&gt;79d)</span>
+      <span class="warn" style="font-weight:600;color:#c0392b;">4 UCs / $0.7M</span>
+    </span>
+    <span style="display:flex;justify-content:space-between;">
+      <span>Stale TW (&gt;104d)</span>
+      <span style="font-weight:600;color:#27ae60;">0 UCs</span>
+    </span>
+    <span style="display:flex;justify-content:space-between;">
+      <span>No next steps</span>
+      <span style="font-weight:600;color:#555;">0 UCs</span>
+    </span>
+  </div>
+</div>
+<div style="background:#f8f9fa;border-radius:8px;padding:16px;border-top:4px solid #6f42c1;">
+  <div style="font-size:0.95em;font-weight:700;color:#1a1a2e;margin-bottom:2px;">EntSoCal</div>
+  <div style="font-size:0.74em;color:#888;margin-bottom:10px;">26 UCs &bull; $3.5M pipeline &bull; Southwest</div>
+  <div style="display:flex;height:18px;border-radius:4px;overflow:hidden;margin-bottom:4px;">
+    <div style="width:55.7%;background:#17a2b8;"></div>
+    <div style="width:13.5%;background:#ffc107;"></div>
+    <div style="width:30.8%;background:#e9ecef;"></div>
+  </div>
+  <div style="display:flex;gap:8px;font-size:0.7em;color:#666;margin-bottom:10px;">
+    <span>&#9679; IMP $2.0M</span>
+    <span>&#9679; TW $0.5M</span>
+    <span>&#9679; Pre-TW $1.1M</span>
+  </div>
+  <div style="text-align:center;font-size:1.5em;font-weight:700;color:#c0392b;margin-bottom:2px;">$2.2M</div>
+  <div style="text-align:center;font-size:0.68em;text-transform:uppercase;color:#888;margin-bottom:8px;">M4 Most Likely (Weighted Ensemble)</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:0.72em;margin-bottom:8px;">
+    <div style="background:white;border-radius:4px;padding:4px;text-align:center;">
+      <div style="color:#aaa;font-size:0.82em;">Commit (Pipeline Risk)</div>
+      <div style="font-weight:600;color:#e67e22;">$1.6M</div>
+    </div>
+    <div style="background:white;border-radius:4px;padding:4px;text-align:center;">
+      <div style="color:#aaa;font-size:0.82em;">Stretch (cap at pipeline)</div>
+      <div style="font-weight:600;color:#1d8ab5;">$3.2M</div>
+    </div>
+  </div>
+  <div style="font-size:0.7em;color:#888;border-top:1px solid #e9ecef;padding-top:7px;display:flex;flex-direction:column;gap:3px;">
+    <span style="display:flex;justify-content:space-between;">
+      <span>Stale IMP (&gt;79d)</span>
+      <span class="warn" style="font-weight:600;color:#c0392b;">5 UCs / $0.7M</span>
+    </span>
+    <span style="display:flex;justify-content:space-between;">
+      <span>Stale TW (&gt;104d)</span>
+      <span style="font-weight:600;color:#c0392b;">1 UCs</span>
+    </span>
+    <span style="display:flex;justify-content:space-between;">
+      <span>No next steps</span>
+      <span style="font-weight:600;color:#555;">0 UCs</span>
+    </span>
+  </div>
+</div>
+</div>
+
+<!-- Methodology for new SEMs -->
+<div class="section-title" style="margin-top:28px;">How to Read This Forecast (For New SEMs)</div>
+<div class="card-wrap" style="font-size:0.84em;line-height:1.7;color:#444;">
+  <p style="margin-bottom:10px;">
+    <strong>Pipeline Risk Model (M1 — Commit):</strong> Looks at each UC in your pipeline and asks
+    "given how long this UC has been in its current stage, can it realistically deploy by Oct 31?"
+    Stage 5 (IMP) needs 79 days average to deploy — so any IMP UC passes.
+    Stage 4 (TW) needs 104 days — UCs with &lt;13 days in stage are "at risk."
+    Commit = only the "safe" pipeline. This is your floor.
+  </p>
+  <p style="margin-bottom:10px;">
+    <strong>Stage Conversion Model (Stage Conv — Most Likely):</strong> Uses historical conversion rates
+    — on average, 56.6% of IMP pipeline, 29.3% of TW, and 24.2% of Pre-TW deploys within the quarter.
+    Then adds 14.5% uplift for new UCs created/pulled in during the quarter. This is your best estimate.
+  </p>
+  <p style="margin-bottom:10px;">
+    <strong>Weighted Ensemble (M4 — the recommended number):</strong> 56% Pipeline Risk + 44% Stage
+    Conversion. Pipeline Risk gets more weight because it directly inspects your pipeline health.
+    Once Q3 starts and deployments accumulate, a third model (Historical Pacing) enters the blend.
+  </p>
+  <p>
+    <strong>What the week-by-week chart teaches:</strong> At week 1, only ~75–85% of visible pipeline
+    converts — some UCs slip, dates move, or deals fall through. By week 8, remaining pipeline is
+    almost entirely deep-IMP and converts at 90%+. The earlier you can get UCs into Implementation,
+    the more predictable your quarter becomes.
+  </p>
+</div>
+
+<p style="font-size:0.7em;color:#aaa;margin-top:16px;text-align:center;">
+  Generated August 12, 2026 &bull; NorthwestExp + SouthwestExp &bull; AMSExpansion / Mark Fleming GVP &bull;
+  Sources: MDM.MDM_INTERFACES.DIM_USE_CASE &bull; SALES.SE_REPORTING.DIM_USE_CASE_HISTORY_DS
+</p>
+
+</body>
+</html>

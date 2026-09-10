@@ -1,0 +1,187 @@
+# PEAK Q3 + Q4 FY27 — notes for Jaime Patel's SE RVPs (5)
+# Generated Sep 9, 2026. NOT SENT — for your review.
+#
+# Structure of each note:
+#   1. Q3 week 7 call locks Friday      -> here's the analysis to help
+#   2. Q4 out-quarter call is Monday,
+#      so Q4 locks Friday too           -> here's the analysis to help
+#   3. Open door for questions
+#
+# PUBLISHED LINKS (Snowflake Intelligence artifacts; READ granted to
+# SALES_RAVEN_RO_RL + SALES_STREAMLIT_RL — link sharing is off, so recipients
+# need one of those roles to open them):
+#   Q3: https://app.snowflake.com/SFCOGSOPS/SNOWHOUSE_AWS_US_WEST_2/#/artifacts/97a03d64-c621-41ec-a50f-3456d1be80a7
+#   Q4: https://app.snowflake.com/SFCOGSOPS/SNOWHOUSE_AWS_US_WEST_2/#/artifacts/0a3430cb-2950-4755-be28-ce3e7d72e5fa
+#
+# Figures come from the report's own PEAK_region_detail_Q3FY27.csv / _Q4FY27.csv,
+# so they cannot drift from what's in the HTML.
+#
+# Coverage map:
+#   Robert Silva    NortheastExp + SoutheastExp
+#   Ben Greene      Commercial + USGrowthExp
+#   Daniel Gostrer  NorthwestExp + SouthwestExp
+#   Josh Chacona    CentralExp
+#   Nav Anand       CanadaExp
+
+================================================================================
+BEN GREENE — Commercial + USGrowthExp — @ben.greene (WEGJDFTFS)
+================================================================================
+Hey Ben — two things need to be locked by Friday, and I've built the analysis to
+help you get both done.
+
+*1. Your Q3 week 7 call locks Friday*
+Here's the Q3 analysis:
+https://app.snowflake.com/SFCOGSOPS/SNOWHOUSE_AWS_US_WEST_2/#/artifacts/97a03d64-c621-41ec-a50f-3456d1be80a7
+
+Where you sit today: $20.4M banked, $39.5M open, against a $66.2M target. The
+model's Most Likely is $57.2M — 86% of target. You're carrying the largest target
+in the org and the largest absolute gap, so this is the call that moves the
+AMSExpansion number (we're at 99% overall).
+
+Open the report to your Commercial and USGrowthExp cards. Use them two ways: to
+pressure-test the number you're about to call, and to work the hygiene list. You
+have 97 use cases past the 79-day implementation average ($11.4M) and 80 at Stage
+4+ with no next steps — highest in the org on both counts, mostly Commercial.
+That's the ACV most likely to slip out of the quarter, and it's itemised for you.
+
+*2. Q4 out-quarter call with JB is Monday — so Q4 locks Friday too*
+Here's the Q4 analysis:
+https://app.snowflake.com/SFCOGSOPS/SNOWHOUSE_AWS_US_WEST_2/#/artifacts/0a3430cb-2950-4755-be28-ce3e7d72e5fa
+
+Your Q4: $50.2M open against the same $66.2M target, Most Likely $42.2M — 64%,
+the thinnest coverage of the five. Commercial is the driver: its Q4 book is
+smaller than its Q3 book. 37% of your Q4 hasn't reached tech win yet.
+
+Coverage is the question you'll get asked Monday, so worth having your answer
+built off the report rather than assembled in the room.
+
+Any questions on the numbers or how the models get there, grab me before Friday
+and I'll walk you through it.
+
+================================================================================
+ROBERT SILVA — NortheastExp + SoutheastExp — @robert.silva (WEJNGRQQN)
+================================================================================
+Hey Robert — two things need to be locked by Friday, and I've built the analysis
+to help you get both done.
+
+*1. Your Q3 week 7 call locks Friday*
+Here's the Q3 analysis:
+https://app.snowflake.com/SFCOGSOPS/SNOWHOUSE_AWS_US_WEST_2/#/artifacts/97a03d64-c621-41ec-a50f-3456d1be80a7
+
+Where you sit today: $14.5M banked, $42.9M open, against a $53.1M target. Most
+Likely is $47.1M — 89% of target. You have the most open pipeline of the five but
+the lightest banked position against it, so more of your quarter is still to
+convert than anyone else's with 53 days left.
+
+Open the report to your NortheastExp and SoutheastExp cards to pressure-test the
+call, then work the hygiene list: 46 use cases past the 79-day implementation
+average ($9.8M) and 11 sitting in tech-win stage past 104 days. Both itemised.
+
+*2. Q4 out-quarter call with JB is Monday — so Q4 locks Friday too*
+Here's the Q4 analysis:
+https://app.snowflake.com/SFCOGSOPS/SNOWHOUSE_AWS_US_WEST_2/#/artifacts/0a3430cb-2950-4755-be28-ce3e7d72e5fa
+
+Your Q4: $87.4M open — biggest book in the org — against $53.1M target, Most
+Likely $63.8M at 120%. The volume looks strong; the mix is the soft spot. 50%
+hasn't reached tech win, and 27 use cases are already stale at Stage 4.
+
+That gap between headline coverage and stage quality is what will get probed
+Monday. The stage breakdown on your region cards is the answer.
+
+Any questions on the numbers or how the models get there, grab me before Friday
+and I'll walk you through it.
+
+================================================================================
+DANIEL GOSTRER — NorthwestExp + SouthwestExp — @daniel.gostrer (WDY7LQGQL)
+================================================================================
+Hey Daniel — two things need to be locked by Friday, and I've built the analysis
+to help you get both done.
+
+*1. Your Q3 week 7 call locks Friday*
+Here's the Q3 analysis:
+https://app.snowflake.com/SFCOGSOPS/SNOWHOUSE_AWS_US_WEST_2/#/artifacts/97a03d64-c621-41ec-a50f-3456d1be80a7
+
+Where you sit today: $16.2M banked, $36.2M open, against a $37.6M target. Most
+Likely is $47.7M — 127% of target, strongest Q3 position of the five.
+
+Since the number is in good shape, use the report for the cleanup instead: your
+NorthwestExp and SouthwestExp cards flag 48 use cases past the 79-day
+implementation average carrying $13.7M — the largest stale figure in the org.
+Worth clearing while you're ahead of the number rather than after.
+
+*2. Q4 out-quarter call with JB is Monday — so Q4 locks Friday too*
+Here's the Q4 analysis:
+https://app.snowflake.com/SFCOGSOPS/SNOWHOUSE_AWS_US_WEST_2/#/artifacts/0a3430cb-2950-4755-be28-ce3e7d72e5fa
+
+Your Q4: $61.0M open against $37.6M target, Most Likely $47.3M at 126%. Coverage
+is comfortable, but 55% is still pre-tech-win — the softest mix of the five, so
+the headline reads better than the stage detail.
+
+Expect that to come up Monday. The stage breakdown on your region cards is what
+you'll want in front of you.
+
+Any questions on the numbers or how the models get there, grab me before Friday
+and I'll walk you through it.
+
+================================================================================
+JOSH CHACONA — CentralExp — @josh.chacona (WFTG1EG1G)
+================================================================================
+Hey Josh — two things need to be locked by Friday, and I've built the analysis to
+help you get both done.
+
+*1. Your Q3 week 7 call locks Friday*
+Here's the Q3 analysis:
+https://app.snowflake.com/SFCOGSOPS/SNOWHOUSE_AWS_US_WEST_2/#/artifacts/97a03d64-c621-41ec-a50f-3456d1be80a7
+
+Where you sit today: $10.0M banked, $16.6M open, against a $23.7M target. Most
+Likely is $24.9M — 105% of target. You also have the cleanest next-steps
+discipline in the org, zero gaps at Stage 4+.
+
+Use your CentralExp card to pressure-test the call. The one item left is 37 use
+cases past the 79-day implementation average ($5.7M), itemised in the report.
+
+*2. Q4 out-quarter call with JB is Monday — so Q4 locks Friday too*
+Here's the Q4 analysis:
+https://app.snowflake.com/SFCOGSOPS/SNOWHOUSE_AWS_US_WEST_2/#/artifacts/0a3430cb-2950-4755-be28-ce3e7d72e5fa
+
+Your Q4: $36.9M open against $23.7M target, Most Likely $26.0M at 110%. Your Q4
+book is more than double your Q3 book, with 53% pre-tech-win.
+
+That step up is the thing to be able to speak to Monday — where it came from and
+what has to happen to convert it. The stage breakdown on your card covers it.
+
+Any questions on the numbers or how the models get there, grab me before Friday
+and I'll walk you through it.
+
+================================================================================
+NAV ANAND — CanadaExp — @nav.anand (U0948P4HMJT)
+================================================================================
+Hey Nav — two things need to be locked by Friday, and I've built the analysis to
+help you get both done.
+
+*1. Your Q3 week 7 call locks Friday*
+Here's the Q3 analysis:
+https://app.snowflake.com/SFCOGSOPS/SNOWHOUSE_AWS_US_WEST_2/#/artifacts/97a03d64-c621-41ec-a50f-3456d1be80a7
+
+Where you sit today: $2.7M banked, $8.9M open, against a $9.2M target. Most
+Likely is $10.5M — 114% of target. The forecast is fine; the banked number is the
+watch item. $2.7M against $8.9M open is the lowest conversion-to-date ratio of
+the five, so your quarter is back-loaded.
+
+Use your CanadaExp card to pressure-test the call against that. 33 use cases are
+past the 79-day implementation average ($3.6M) — high for the size of the book,
+and itemised in the report.
+
+*2. Q4 out-quarter call with JB is Monday — so Q4 locks Friday too*
+Here's the Q4 analysis:
+https://app.snowflake.com/SFCOGSOPS/SNOWHOUSE_AWS_US_WEST_2/#/artifacts/0a3430cb-2950-4755-be28-ce3e7d72e5fa
+
+Your Q4: $17.7M open against $9.2M target, Most Likely $14.8M at 161% — best
+coverage ratio in AMSExpansion, with a healthy 37% pre-tech-win mix. Strong
+going in.
+
+Should be a straightforward one Monday; the report gives you the stage detail
+behind it if you're asked.
+
+Any questions on the numbers or how the models get there, grab me before Friday
+and I'll walk you through it.

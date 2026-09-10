@@ -26,17 +26,6 @@ CONNECTION_NAME = "MyConnection"
 ROLE = "SALES_RAVEN_RO_RL"
 WAREHOUSE = "SNOWADHOC"
 GVP = "Mark Fleming"
-GVP_EMAIL = "mark.fleming@snowflake.com"
-
-# PEAK-native detail table. This is what MaxIQ reports against, and the only
-# source that reproduces its published figures exactly:
-#   open pipeline (Going Live) = stage 1-6, GO_LIVE_DATE_FQ_SK = quarter
-#   deployed (Live)           = stage 7
-#   won (Won)                 = TECHNICAL_WIN='Yes', stage 4-7, DECISION_DATE_FQ_SK
-# Grain is one row per use case per hierarchy level (AE -> DM -> SubRegion Lead
-# -> RVP -> GVP), so LEVEL_NUM = 1 plus a dedup on USE_CASE_ID is required.
-# REGION is only populated on the base rows; GVP rollup rows carry NULL.
-PEAK = "SALES.REPORTING.PEAK_USE_CASE_FORECAST"
 
 TODAY = date.today()
 
@@ -52,9 +41,9 @@ QUARTERS = {
         "prior_label": "Q3 FY26",
         "prior_start": date(2025, 8, 1),
         "prior_end": date(2025, 10, 31),
-        # Calibrated @ day 40 in-quarter, STAGE-based buckets (4Q, Q2 FY27 2x)
-        "m3_avg": {"imp": 0.639, "tw": 0.378, "pretw": 0.178, "new": 0.230},
-        "m3_min": {"imp": 0.536, "tw": 0.294, "pretw": 0.150, "new": 0.195},
+        # Calibrated @ day 40 in-quarter (4Q, Q2 FY27 at 2x weight)
+        "m3_avg": {"imp": 0.605, "tw": 0.374, "pretw": 0.135, "new": 0.230},
+        "m3_min": {"imp": 0.508, "tw": 0.209, "pretw": 0.087, "new": 0.195},
         # M2 pacing @ day 40: share of final deployed already banked
         "m2_pace": {"avg": 0.348, "min": 0.321, "max": 0.362},
     },
@@ -66,9 +55,9 @@ QUARTERS = {
         "prior_label": "Q4 FY26",
         "prior_start": date(2025, 11, 1),
         "prior_end": date(2026, 1, 31),
-        # Calibrated @ 53 days before open, STAGE-based buckets (4Q, Q2 FY27 2x)
-        "m3_avg": {"imp": 0.440, "tw": 0.277, "pretw": 0.148, "new": 0.633},
-        "m3_min": {"imp": 0.337, "tw": 0.219, "pretw": 0.104, "new": 0.547},
+        # Calibrated @ 53 days before open (4Q, Q2 FY27 at 2x weight)
+        "m3_avg": {"imp": 0.388, "tw": 0.248, "pretw": 0.128, "new": 0.633},
+        "m3_min": {"imp": 0.305, "tw": 0.158, "pretw": 0.097, "new": 0.547},
         # M2 requires deployed ACV — N/A pre-quarter
         "m2_pace": None,
     },
@@ -140,35 +129,17 @@ BACKTEST = {
 M1_AVG_ERR = sum(v["m1"] for v in BACKTEST.values()) / len(BACKTEST)
 M3_AVG_ERR = sum(v["m3"] for v in BACKTEST.values()) / len(BACKTEST)
 
-# A handful of use cases carry no REGION on their base PEAK row. They are kept
-# in the totals so the report still ties to MaxIQ, but they get no region card
-# (no RVP, no target) because a near-empty card reads as a bug.
-SUPPRESS_REGION_CARDS = set()
-
 # ──────────────────────── M1 Risk Thresholds ─────────────────────────────────
 M1_THRESH = {5: 79, 4: 104, "pretw": 146}   # days threshold per stage
 
 # ─────────────────────────── Snowflake Queries ───────────────────────────────
 
 def get_conn():
-    """
-    Connect flexibly so the same script runs locally and inside an automation
-    sandbox, which has no connections.toml. Tries the named connection first,
-    then the default connection, then whatever the environment provides.
-    """
-    attempts = [
-        dict(connection_name=CONNECTION_NAME, role=ROLE, warehouse=WAREHOUSE),
-        dict(role=ROLE, warehouse=WAREHOUSE),
-        dict(warehouse=WAREHOUSE),
-        dict(),
-    ]
-    last = None
-    for kw in attempts:
-        try:
-            return snowflake.connector.connect(**kw)
-        except Exception as exc:
-            last = exc
-    raise RuntimeError(f"could not open a Snowflake connection: {last}")
+    return snowflake.connector.connect(
+        connection_name=CONNECTION_NAME,
+        role=ROLE,
+        warehouse=WAREHOUSE,
+    )
 
 
 def run(conn, sql):
@@ -179,92 +150,61 @@ def run(conn, sql):
     return [dict(zip(cols, row)) for row in cur.fetchall()]
 
 
-def _peak_base(extra_cols="", fq_col="GO_LIVE_DATE_FQ_SK", fq_val=None):
-    """
-    Base CTE over the PEAK detail table: one deduped row per use case at the
-    LEVEL_NUM=1 grain, with stage parsed to an integer. `fq_col` selects which
-    fiscal-quarter key to filter on — go-live for pipeline, decision for wins.
-    RVP name comes from Raven so casing matches the org chart (deriving it from
-    the email mangles names like LaCamera).
-    """
-    fq_val = fq_val or FQ_KEY
-    return f"""
-    WITH rvp_names AS (
-        SELECT DISTINCT LOWER(RVP_EMAIL) AS rvp_email, RVP AS rvp_name
-        FROM SALES.RAVEN.D_SALESFORCE_ACCOUNT_CUSTOMERS
-        WHERE RVP_EMAIL IS NOT NULL AND RVP IS NOT NULL
-    ),
-    base AS (
-        SELECT
-            p.USE_CASE_ID,
-            p.REGION                                           AS region,
-            COALESCE(rn.rvp_name,
-                     INITCAP(REPLACE(SPLIT_PART(p.RVP_EMAIL,'@',1),'.',' '))
-                    )                                          AS rvp,
-            p.DISTRICT                                         AS district,
-            p.ESTIMATED_VALUE                                  AS acv,
-            TRY_TO_NUMBER(LEFT(p.USE_CASE_STAGE, 1))           AS stage_num,
-            p.DAYS_IN_STAGE                                    AS days_in_stage,
-            p.NEXT_STEPS                                       AS next_steps,
-            p.TECHNICAL_WIN                                    AS technical_win
-            {extra_cols}
-        FROM {PEAK} p
-        LEFT JOIN rvp_names rn ON LOWER(p.RVP_EMAIL) = rn.rvp_email
-        WHERE p.GVP_EMAIL = '{GVP_EMAIL}'
-          AND p.LEVEL_NUM = 1
-          AND p.ESTIMATED_VALUE > 0
-          AND p.{fq_col} = '{fq_val}'
-          -- A few records carry no REGION on their base row (hierarchy data
-          -- quality). They cannot be attributed to an RVP or target, so they
-          -- are dropped from region rows; this is worth ~$0.1M.
-          AND p.REGION IS NOT NULL
-        QUALIFY ROW_NUMBER() OVER (
-            PARTITION BY p.USE_CASE_ID
-            ORDER BY p.REGION NULLS LAST, p.DISTRICT NULLS LAST
-        ) = 1
-    )"""
-
-
 def query_pipeline(conn):
     """
-    Per-region open pipeline from the PEAK detail table: stage bucket ACVs,
-    IMP depth bands, and M1 risk flags. Stage 1-6 only, which is what MaxIQ
-    counts as 'Going Live'.
+    Returns per-region pipeline: phase ACVs, IMP depth buckets, M1 risk flags.
+    Filters: quarter go-live dates, non-deployed, non-lost, EACV > 0.
     """
-    sql = _peak_base() + f"""
+    sql = f"""
     SELECT
-        region,
-        MAX(rvp)                                    AS rvp,
-        COUNT(*)                                    AS uc_count,
-        ROUND(SUM(acv), 0)                          AS total_acv,
+        CASE
+            WHEN SUB_REGION_NAME IN ('CommEast_SR','CommWest_SR') THEN 'Commercial'
+            ELSE REPLACE(SUB_REGION_NAME, '_SR', '')
+        END                                                      AS region,
+        MAX(ACCOUNT_RVP)                                         AS rvp,
+        COUNT(*)                                                 AS uc_count,
+        ROUND(SUM(USE_CASE_EACV), 0)                             AS total_acv,
         -- IMP (Stage 5) depth buckets
-        ROUND(SUM(CASE WHEN stage_num=5 AND days_in_stage BETWEEN  0 AND 13 THEN acv ELSE 0 END),0) AS imp_0_13,
-        ROUND(SUM(CASE WHEN stage_num=5 AND days_in_stage BETWEEN 14 AND 29 THEN acv ELSE 0 END),0) AS imp_14_29,
-        ROUND(SUM(CASE WHEN stage_num=5 AND days_in_stage BETWEEN 30 AND 59 THEN acv ELSE 0 END),0) AS imp_30_59,
-        ROUND(SUM(CASE WHEN stage_num=5 AND days_in_stage BETWEEN 60 AND 89 THEN acv ELSE 0 END),0) AS imp_60_89,
-        ROUND(SUM(CASE WHEN stage_num=5 AND days_in_stage >= 90            THEN acv ELSE 0 END),0) AS imp_90p,
-        ROUND(SUM(CASE WHEN stage_num=5 THEN acv ELSE 0 END),0)  AS imp_total,
-        -- TW (Stage 4) split good/at-risk against the current horizon
-        ROUND(SUM(CASE WHEN stage_num=4 AND (days_in_stage + {M1_HORIZON}) >= 104 THEN acv ELSE 0 END),0) AS tw_good,
-        ROUND(SUM(CASE WHEN stage_num=4 AND (days_in_stage + {M1_HORIZON}) <  104 THEN acv ELSE 0 END),0) AS tw_risk,
-        ROUND(SUM(CASE WHEN stage_num=4 THEN acv ELSE 0 END),0)  AS tw_total,
+        ROUND(SUM(CASE WHEN STAGE_NUMBER=5 AND DAYS_IN_STAGE BETWEEN  0 AND 13 THEN USE_CASE_EACV ELSE 0 END),0) AS imp_0_13,
+        ROUND(SUM(CASE WHEN STAGE_NUMBER=5 AND DAYS_IN_STAGE BETWEEN 14 AND 29 THEN USE_CASE_EACV ELSE 0 END),0) AS imp_14_29,
+        ROUND(SUM(CASE WHEN STAGE_NUMBER=5 AND DAYS_IN_STAGE BETWEEN 30 AND 59 THEN USE_CASE_EACV ELSE 0 END),0) AS imp_30_59,
+        ROUND(SUM(CASE WHEN STAGE_NUMBER=5 AND DAYS_IN_STAGE BETWEEN 60 AND 89 THEN USE_CASE_EACV ELSE 0 END),0) AS imp_60_89,
+        ROUND(SUM(CASE WHEN STAGE_NUMBER=5 AND DAYS_IN_STAGE >= 90            THEN USE_CASE_EACV ELSE 0 END),0) AS imp_90p,
+        ROUND(SUM(CASE WHEN STAGE_NUMBER=5 THEN USE_CASE_EACV ELSE 0 END),0)  AS imp_total,
+        -- TW (Stage 4) — split good/risk for M1
+        ROUND(SUM(CASE WHEN STAGE_NUMBER=4 AND (DAYS_IN_STAGE + {M1_HORIZON}) >= 104 THEN USE_CASE_EACV ELSE 0 END),0) AS tw_good,
+        ROUND(SUM(CASE WHEN STAGE_NUMBER=4 AND (DAYS_IN_STAGE + {M1_HORIZON}) <  104 THEN USE_CASE_EACV ELSE 0 END),0) AS tw_risk,
+        ROUND(SUM(CASE WHEN STAGE_NUMBER=4 THEN USE_CASE_EACV ELSE 0 END),0)  AS tw_total,
         -- Pre-TW (Stage 1-3)
-        ROUND(SUM(CASE WHEN stage_num IN (1,2,3) AND (days_in_stage + {M1_HORIZON}) >= 146 THEN acv ELSE 0 END),0) AS pretw_good,
-        ROUND(SUM(CASE WHEN stage_num IN (1,2,3) AND (days_in_stage + {M1_HORIZON}) <  146 THEN acv ELSE 0 END),0) AS pretw_risk,
-        ROUND(SUM(CASE WHEN stage_num IN (1,2,3) THEN acv ELSE 0 END),0) AS pretw_total,
-        -- Stage 6 (Implementation Complete — locked)
-        ROUND(SUM(CASE WHEN stage_num=6 THEN acv ELSE 0 END),0)  AS stage6_acv,
-        COUNT(CASE WHEN stage_num=6 THEN 1 END)                  AS stage6_count,
+        ROUND(SUM(CASE WHEN STAGE_NUMBER IN (1,2,3) AND (DAYS_IN_STAGE + {M1_HORIZON}) >= 146 THEN USE_CASE_EACV ELSE 0 END),0) AS pretw_good,
+        ROUND(SUM(CASE WHEN STAGE_NUMBER IN (1,2,3) AND (DAYS_IN_STAGE + {M1_HORIZON}) <  146 THEN USE_CASE_EACV ELSE 0 END),0) AS pretw_risk,
+        ROUND(SUM(CASE WHEN STAGE_NUMBER IN (1,2,3) THEN USE_CASE_EACV ELSE 0 END),0) AS pretw_total,
+        -- Stage 6 (Impl Complete — locked)
+        ROUND(SUM(CASE WHEN STAGE_NUMBER=6 THEN USE_CASE_EACV ELSE 0 END),0)  AS stage6_acv,
+        COUNT(CASE WHEN STAGE_NUMBER=6 THEN 1 END)               AS stage6_count,
+        -- Milestone-date classification (for M3 — matches PEAK QC Dashboard)
+        ROUND(SUM(CASE WHEN IMPLEMENTATION_START_DATE <= CURRENT_DATE() THEN USE_CASE_EACV ELSE 0 END),0) AS imp_milestone,
+        ROUND(SUM(CASE WHEN (IMPLEMENTATION_START_DATE > CURRENT_DATE() OR IMPLEMENTATION_START_DATE IS NULL)
+                       AND TECHNICAL_WIN_DATE <= CURRENT_DATE() THEN USE_CASE_EACV ELSE 0 END),0) AS tw_milestone,
+        ROUND(SUM(CASE WHEN (IMPLEMENTATION_START_DATE > CURRENT_DATE() OR IMPLEMENTATION_START_DATE IS NULL)
+                       AND (TECHNICAL_WIN_DATE > CURRENT_DATE() OR TECHNICAL_WIN_DATE IS NULL) THEN USE_CASE_EACV ELSE 0 END),0) AS pretw_milestone,
         -- Stale / hygiene flags
-        COUNT(CASE WHEN stage_num=5 AND days_in_stage > 79 THEN 1 END)  AS stale_imp_cnt,
-        ROUND(SUM(CASE WHEN stage_num=5 AND days_in_stage > 79 THEN acv ELSE 0 END),0) AS stale_imp_acv,
-        COUNT(CASE WHEN stage_num=4 AND days_in_stage > 104 THEN 1 END) AS stale_tw_cnt,
-        ROUND(SUM(CASE WHEN stage_num=4 AND days_in_stage > 104 THEN acv ELSE 0 END),0) AS stale_tw_acv,
-        COUNT(CASE WHEN stage_num >= 4 AND (next_steps IS NULL OR next_steps = '') THEN 1 END) AS no_next_steps
-    FROM base
-    WHERE stage_num BETWEEN 1 AND 6
-    GROUP BY region
-    ORDER BY total_acv DESC
+        COUNT(CASE WHEN STAGE_NUMBER=5 AND DAYS_IN_STAGE > 79 THEN 1 END)    AS stale_imp_cnt,
+        ROUND(SUM(CASE WHEN STAGE_NUMBER=5 AND DAYS_IN_STAGE > 79 THEN USE_CASE_EACV ELSE 0 END),0) AS stale_imp_acv,
+        COUNT(CASE WHEN STAGE_NUMBER=4 AND DAYS_IN_STAGE > 104 THEN 1 END)   AS stale_tw_cnt,
+        ROUND(SUM(CASE WHEN STAGE_NUMBER=4 AND DAYS_IN_STAGE > 104 THEN USE_CASE_EACV ELSE 0 END),0) AS stale_tw_acv,
+        COUNT(CASE WHEN STAGE_NUMBER >= 4 AND (NEXT_STEPS IS NULL OR NEXT_STEPS = '') THEN 1 END) AS no_next_steps
+    FROM MDM.MDM_INTERFACES.DIM_USE_CASE
+    WHERE ACCOUNT_GVP = '{GVP}'
+      AND IS_DEPLOYED = FALSE
+      AND IS_LOST     = FALSE
+      AND USE_CASE_EACV > 0
+      AND STAGE_NUMBER >= 1
+      AND GO_LIVE_DATE BETWEEN '{QS}' AND '{QE}'
+      AND SUB_REGION_NAME NOT IN ('AMSExpansion_SRgn_Hold')
+      AND SUB_REGION_NAME IS NOT NULL
+    GROUP BY 1
+    ORDER BY 4 DESC
     """
     return run(conn, sql)
 
@@ -272,9 +212,7 @@ def query_pipeline(conn):
 def query_prior_actuals(conn):
     """
     Prior-year same-quarter actual deployed ACV by region, plus TOTAL.
-
-    Stays on MDM for the same reason as query_yoy — PEAK go-live coverage
-    begins at 2027-Q1 and holds no FY26 history.
+    Replaces a hardcoded table so the Q4 report cites Q4 FY26 rather than Q3.
     """
     sql = f"""
     SELECT
@@ -299,55 +237,6 @@ def query_prior_actuals(conn):
     return out
 
 
-def query_maxiq(conn):
-    """
-    MaxIQ's own figures for this quarter, used as the tie-out reference.
-      'Going Live' = open pipeline, 'Live' = deployed/banked
-
-    Pulls BOTH the current snapshot (LATEST_DATE) and the prior week
-    (PREVIOUS_WEEK). MaxIQ views are frequently read a week behind, and the
-    week-over-week move is large enough to look like a defect if only one
-    snapshot is shown.
-
-    Note this table is a hierarchy — one row per person per FUNCTION level
-    (GVP / RVP / SubRegion Lead / DM). The GVP row is the AMSExpansion rollup;
-    summing SubRegion Lead rows undercounts it because a few sub-regions have
-    no assigned lead.
-    """
-    sql = f"""
-    SELECT TYPE, FORECAST_TYPE,
-           MAX(CASE WHEN LATEST_DATE   THEN FORECAST_AMOUNT END) AS amt_now,
-           MAX(CASE WHEN PREVIOUS_WEEK THEN FORECAST_AMOUNT END) AS amt_prior
-    FROM SALES.REPORTING.PEAK_FORECAST_CALLS_PIPELINE_TARGETS
-    WHERE USER_NAME = '{GVP}'
-      AND FUNCTION = 'GVP'
-      AND FISCAL_QUARTER = '{FQ_KEY}'
-      AND TYPE IN ('Use Case Go-Lives', 'Use Case Wins')
-      AND (LATEST_DATE OR PREVIOUS_WEEK)
-    GROUP BY TYPE, FORECAST_TYPE
-    """
-    rows = run(conn, sql)
-    now, prior = {}, {}
-    for r in rows:
-        key = (r["TYPE"], r["FORECAST_TYPE"])
-        now[key] = float(r["AMT_NOW"] or 0)
-        prior[key] = float(r["AMT_PRIOR"] or 0)
-
-    g, w = "Use Case Go-Lives", "Use Case Wins"
-    fields = {
-        "open":   (g, "Going Live"),
-        "live":   (g, "Live"),
-        "commit": (g, "CommitForecast"),
-        "ml":     (g, "MostLikelyForecast"),
-        "best":   (g, "BestCaseForecast"),
-        "target": (g, "Target"),
-        "won":    (w, "Won"),
-    }
-    out = {k: now.get(key, 0) for k, key in fields.items()}
-    out["prior"] = {k: prior.get(key, 0) for k, key in fields.items()}
-    return out
-
-
 def query_targets(conn):
     sql = f"""
     SELECT REGION, USE_CASE_GO_LIVE_TARGET_REGION AS target_acv
@@ -361,13 +250,7 @@ def query_targets(conn):
 
 
 def query_yoy(conn):
-    """
-    Prior-year same-quarter pipeline at the same calendar date.
-
-    Stays on the MDM history snapshots: PEAK_USE_CASE_FORECAST holds only the
-    current state (single timestamp) and its go-live coverage starts at
-    2027-Q1, so it cannot answer a year-ago question.
-    """
+    """Prior-year same-quarter pipeline at the same calendar date."""
     yoy_date = date(TODAY.year - 1, TODAY.month, TODAY.day)
     sql = f"""
     SELECT
@@ -378,7 +261,7 @@ def query_yoy(conn):
       AND IS_DEPLOYED = FALSE
       AND IS_LOST     = FALSE
       AND USE_CASE_EACV > 0
-      AND STAGE_NUMBER BETWEEN 1 AND 6
+      AND STAGE_NUMBER >= 1
       AND GO_LIVE_DATE BETWEEN '{PRIOR_QS}' AND '{PRIOR_QE}'
     """
     rows = run(conn, sql)
@@ -387,17 +270,26 @@ def query_yoy(conn):
 
 def query_deployed(conn):
     """
-    Deployed (banked) ACV by region — MaxIQ's 'Live'. Stage 7 in PEAK.
-    $0 pre-quarter. Added on top of model output, since M1/M3 forecast only
-    what is still open.
+    Deployed (banked) ACV for the quarter, by region and in total.
+    $0 pre-quarter. Feeds M2 pacing and is added on top of the open-pipeline
+    model output — M1/M3 only forecast what is still open.
     """
-    sql = _peak_base() + """
-    SELECT region,
-           ROUND(SUM(acv), 0) AS deployed_acv,
-           COUNT(*)           AS deployed_count
-    FROM base
-    WHERE stage_num = 7
-    GROUP BY region
+    sql = f"""
+    SELECT
+        CASE
+            WHEN SUB_REGION_NAME IN ('CommEast_SR','CommWest_SR') THEN 'Commercial'
+            ELSE REPLACE(SUB_REGION_NAME, '_SR', '')
+        END                                        AS region,
+        ROUND(SUM(USE_CASE_EACV), 0)               AS deployed_acv,
+        COUNT(*)                                   AS deployed_count
+    FROM MDM.MDM_INTERFACES.DIM_USE_CASE
+    WHERE ACCOUNT_GVP = '{GVP}'
+      AND IS_DEPLOYED = TRUE
+      AND USE_CASE_EACV > 0
+      AND STAGE_NUMBER >= 1
+      AND GO_LIVE_DATE BETWEEN '{QS}' AND '{QE}'
+      AND SUB_REGION_NAME NOT IN ('AMSExpansion_SRgn_Hold')
+    GROUP BY 1
     """
     rows = run(conn, sql)
     return {r["REGION"]: r for r in rows}
@@ -405,19 +297,19 @@ def query_deployed(conn):
 
 def query_won_qtd(conn):
     """
-    Wins booked in the quarter — MaxIQ's 'Won'. Verified to reproduce it to the
-    cent: TECHNICAL_WIN='Yes', stage 4-7, decision date in the quarter
-    (Q3 FY27 = $77.628M vs MaxIQ $77.63M).
-
-    Dropping the stage bound yields MaxIQ's 'Mature' figure instead ($85.66M),
-    so the 4-7 bound is what separates the two measures.
+    Stage 4 wins booked in the quarter. Uses IS_WON + DECISION_DATE, which is
+    the definition MaxIQ reports against — ACTUAL_USE_CASE_WON_DATE undercounts.
     """
-    sql = _peak_base(fq_col="DECISION_DATE_FQ_SK") + """
-    SELECT ROUND(SUM(acv), 0) AS won_acv,
-           COUNT(*)           AS won_count
-    FROM base
-    WHERE technical_win = 'Yes'
-      AND stage_num BETWEEN 4 AND 7
+    sql = f"""
+    SELECT
+        ROUND(SUM(USE_CASE_EACV), 0) AS won_acv,
+        COUNT(*)                     AS won_count
+    FROM MDM.MDM_INTERFACES.DIM_USE_CASE
+    WHERE ACCOUNT_GVP = '{GVP}'
+      AND IS_WON = TRUE
+      AND USE_CASE_EACV > 0
+      AND STAGE_NUMBER >= 1
+      AND DECISION_DATE BETWEEN '{QS}' AND '{QE}'
     """
     rows = run(conn, sql)
     r = rows[0] if rows else {}
@@ -441,7 +333,7 @@ def query_wins(conn):
     FROM MDM.MDM_INTERFACES.DIM_USE_CASE
     WHERE ACCOUNT_GVP = '{GVP}'
       AND IS_LOST = FALSE AND IS_DEPLOYED = FALSE
-      AND USE_CASE_EACV > 0 AND STAGE_NUMBER BETWEEN 1 AND 6
+      AND USE_CASE_EACV > 0 AND STAGE_NUMBER >= 1
     """
     # Wins target
     target_sql = f"""
@@ -472,35 +364,43 @@ W3_MIN_NEW_PCT   = 0.347   # Q4 FY26 (lowest)
 
 
 def query_districts(conn):
-    """District-level open pipeline for Commercial and USGrowth, from PEAK."""
-    sql = _peak_base() + f"""
+    """District-level pipeline for Commercial and USGrowth sub-regions."""
+    sql = f"""
     SELECT
-        district                                    AS district,
-        region                                      AS region,
-        COUNT(*)                                    AS uc_count,
-        ROUND(SUM(acv), 0)                          AS total_acv,
-        ROUND(SUM(CASE WHEN stage_num=5 AND days_in_stage BETWEEN  0 AND 13 THEN acv ELSE 0 END),0) AS imp_0_13,
-        ROUND(SUM(CASE WHEN stage_num=5 AND days_in_stage BETWEEN 14 AND 29 THEN acv ELSE 0 END),0) AS imp_14_29,
-        ROUND(SUM(CASE WHEN stage_num=5 AND days_in_stage BETWEEN 30 AND 59 THEN acv ELSE 0 END),0) AS imp_30_59,
-        ROUND(SUM(CASE WHEN stage_num=5 AND days_in_stage BETWEEN 60 AND 89 THEN acv ELSE 0 END),0) AS imp_60_89,
-        ROUND(SUM(CASE WHEN stage_num=5 AND days_in_stage >= 90            THEN acv ELSE 0 END),0) AS imp_90p,
-        ROUND(SUM(CASE WHEN stage_num=5 THEN acv ELSE 0 END),0)  AS imp_total,
-        ROUND(SUM(CASE WHEN stage_num=4 AND (days_in_stage + {M1_HORIZON}) >= 104 THEN acv ELSE 0 END),0) AS tw_good,
-        ROUND(SUM(CASE WHEN stage_num=4 THEN acv ELSE 0 END),0)  AS tw_total,
-        ROUND(SUM(CASE WHEN stage_num IN (1,2,3) AND (days_in_stage + {M1_HORIZON}) >= 146 THEN acv ELSE 0 END),0) AS pretw_good,
-        ROUND(SUM(CASE WHEN stage_num IN (1,2,3) THEN acv ELSE 0 END),0) AS pretw_total,
-        ROUND(SUM(CASE WHEN stage_num=6 THEN acv ELSE 0 END),0)  AS stage6_acv,
-        COUNT(CASE WHEN stage_num=6 THEN 1 END)                  AS stage6_count,
-        COUNT(CASE WHEN stage_num=5 AND days_in_stage > 79 THEN 1 END)  AS stale_imp_cnt,
-        ROUND(SUM(CASE WHEN stage_num=5 AND days_in_stage > 79 THEN acv ELSE 0 END),0) AS stale_imp_acv,
-        COUNT(CASE WHEN stage_num=4 AND days_in_stage > 104 THEN 1 END) AS stale_tw_cnt,
-        COUNT(CASE WHEN stage_num >= 4 AND (next_steps IS NULL OR next_steps = '') THEN 1 END) AS no_next_steps
-    FROM base
-    WHERE stage_num BETWEEN 1 AND 6
-      AND region IN ('Commercial', 'USGrowthExp')
-      AND district IS NOT NULL
-    GROUP BY district, region
-    ORDER BY region, total_acv DESC
+        DISTRICT_NAME                                                AS district,
+        CASE
+            WHEN SUB_REGION_NAME IN ('CommEast_SR','CommWest_SR') THEN 'Commercial'
+            ELSE 'USGrowthExp'
+        END                                                          AS region,
+        COUNT(*)                                                     AS uc_count,
+        ROUND(SUM(USE_CASE_EACV), 0)                                 AS total_acv,
+        ROUND(SUM(CASE WHEN STAGE_NUMBER=5 AND DAYS_IN_STAGE BETWEEN  0 AND 13 THEN USE_CASE_EACV ELSE 0 END),0) AS imp_0_13,
+        ROUND(SUM(CASE WHEN STAGE_NUMBER=5 AND DAYS_IN_STAGE BETWEEN 14 AND 29 THEN USE_CASE_EACV ELSE 0 END),0) AS imp_14_29,
+        ROUND(SUM(CASE WHEN STAGE_NUMBER=5 AND DAYS_IN_STAGE BETWEEN 30 AND 59 THEN USE_CASE_EACV ELSE 0 END),0) AS imp_30_59,
+        ROUND(SUM(CASE WHEN STAGE_NUMBER=5 AND DAYS_IN_STAGE BETWEEN 60 AND 89 THEN USE_CASE_EACV ELSE 0 END),0) AS imp_60_89,
+        ROUND(SUM(CASE WHEN STAGE_NUMBER=5 AND DAYS_IN_STAGE >= 90            THEN USE_CASE_EACV ELSE 0 END),0) AS imp_90p,
+        ROUND(SUM(CASE WHEN STAGE_NUMBER=5 THEN USE_CASE_EACV ELSE 0 END),0)  AS imp_total,
+        ROUND(SUM(CASE WHEN STAGE_NUMBER=4 AND (DAYS_IN_STAGE + {M1_HORIZON}) >= 104 THEN USE_CASE_EACV ELSE 0 END),0) AS tw_good,
+        ROUND(SUM(CASE WHEN STAGE_NUMBER=4 THEN USE_CASE_EACV ELSE 0 END),0)  AS tw_total,
+        ROUND(SUM(CASE WHEN STAGE_NUMBER IN (1,2,3) AND (DAYS_IN_STAGE + {M1_HORIZON}) >= 146 THEN USE_CASE_EACV ELSE 0 END),0) AS pretw_good,
+        ROUND(SUM(CASE WHEN STAGE_NUMBER IN (1,2,3) THEN USE_CASE_EACV ELSE 0 END),0) AS pretw_total,
+        ROUND(SUM(CASE WHEN STAGE_NUMBER=6 THEN USE_CASE_EACV ELSE 0 END),0)  AS stage6_acv,
+        COUNT(CASE WHEN STAGE_NUMBER=6 THEN 1 END)                   AS stage6_count,
+        COUNT(CASE WHEN STAGE_NUMBER=5 AND DAYS_IN_STAGE > 79 THEN 1 END)    AS stale_imp_cnt,
+        ROUND(SUM(CASE WHEN STAGE_NUMBER=5 AND DAYS_IN_STAGE > 79 THEN USE_CASE_EACV ELSE 0 END),0) AS stale_imp_acv,
+        COUNT(CASE WHEN STAGE_NUMBER=4 AND DAYS_IN_STAGE > 104 THEN 1 END)   AS stale_tw_cnt,
+        COUNT(CASE WHEN STAGE_NUMBER >= 4 AND (NEXT_STEPS IS NULL OR NEXT_STEPS = '') THEN 1 END) AS no_next_steps
+    FROM MDM.MDM_INTERFACES.DIM_USE_CASE
+    WHERE ACCOUNT_GVP = '{GVP}'
+      AND IS_DEPLOYED = FALSE
+      AND IS_LOST     = FALSE
+      AND USE_CASE_EACV > 0
+      AND STAGE_NUMBER >= 1
+      AND GO_LIVE_DATE BETWEEN '{QS}' AND '{QE}'
+      AND SUB_REGION_NAME IN ('CommEast_SR','CommWest_SR','USGrowthExp_SR')
+      AND DISTRICT_NAME IS NOT NULL
+    GROUP BY 1, 2
+    ORDER BY 2, 4 DESC
     """
     return run(conn, sql)
 
@@ -580,14 +480,11 @@ def compute_m4(m1, m3, m2=None):
 # ─────────────────────────── Formatting helpers ──────────────────────────────
 
 def fmt_m(val):
-    """
-    Format ACV as $XX.XM — always one decimal.
-
-    Previously this dropped the decimal above $10M, which rounded away exactly
-    the differences that matter when reconciling to MaxIQ: $143.8M and $144.1M
-    both rendered as "$144M", making a real change look like no change at all.
-    """
-    return f"${val / 1_000_000:.1f}M"
+    """Format ACV value as $XXM or $XX.XM."""
+    m = val / 1_000_000
+    if m >= 10:
+        return f"${m:.0f}M"
+    return f"${m:.1f}M"
 
 
 def fmt_pct(num, denom):
@@ -964,12 +861,9 @@ function showTab(id, btn) {{
 
 
 def generate_html(regions, targets, yoy_total, districts, wins_data,
-                  deployed_by_region=None, won_qtd=None, maxiq=None):
+                  deployed_by_region=None, won_qtd=None):
     deployed_by_region = deployed_by_region or {}
     won_qtd = won_qtd or {"won_acv": 0, "won_count": 0}
-    _mk = ("open", "live", "commit", "ml", "best", "target", "won")
-    maxiq = maxiq or {k: 0 for k in _mk}
-    maxiq.setdefault("prior", {k: 0 for k in _mk})
     today_str = TODAY.strftime("%B %-d, %Y")
     days_label = (
         f"{abs(DAYS_TO_OPEN)} days before {QLABEL} opens"
@@ -1032,22 +926,6 @@ def generate_html(regions, targets, yoy_total, districts, wins_data,
     m1_horizon_note = (f" ({DAYS_REMAINING} days left in {QLABEL})" if IN_QUARTER
                        else " (full quarter)")
 
-    # YoY compares this quarter's open pipeline against the prior-year quarter
-    # measured at the same point in its cycle (same calendar date one year
-    # back, which is the same day-of-quarter / days-to-open offset).
-    _yoy_date = f"{TODAY.strftime('%b %-d')}, {TODAY.year - 1}"
-    if yoy_total:
-        _yoy_pct = pct_f(total_pipeline - yoy_total, yoy_total)
-        _yoy_point = (f"day {DAY_IN_QUARTER}" if IN_QUARTER
-                      else f"{abs(DAYS_TO_OPEN)} days pre-open")
-        yoy_caption = (
-            f"{_yoy_pct:+.0f}% YoY &mdash; {PRIOR_LABEL} open pipeline was "
-            f"{fmt_m(yoy_total)} at the same point in its cycle "
-            f"({_yoy_point}, {_yoy_date})"
-        )
-    else:
-        yoy_caption = f"No comparable {PRIOR_LABEL} snapshot for {_yoy_date}"
-
     if agg_m2:
         ensemble_caption = (f"Weighted Ensemble: {M4_W1*100:.0f}% Pipeline Risk + "
                             f"{M4_W2*100:.0f}% Pacing + {M4_W3*100:.0f}% Stage Conversion")
@@ -1091,7 +969,7 @@ def generate_html(regions, targets, yoy_total, districts, wins_data,
   <div class="banner-card pipeline">
     <div class="banner-label">Total {QLABEL} Open Pipeline</div>
     <div class="banner-value" style="color:#1a1a2e">{fmt_m(total_pipeline)}</div>
-    <div class="banner-sub">{yoy_caption}</div>
+    <div class="banner-sub">{pct_f(total_pipeline-yoy_total, yoy_total):+.0f}% vs {TODAY.strftime('%b %-d')}, {TODAY.year-1} ({fmt_m(yoy_total)})</div>
   </div>
   <div class="banner-card commit">
     <div class="banner-label">Commit (M4)</div>
@@ -1224,107 +1102,6 @@ def generate_html(regions, targets, yoy_total, districts, wins_data,
 </div>
 """)
 
-    # ── MaxIQ tie-out ─────────────────────────────────────────────────────────
-    # Proves the pipeline figures reconcile to what leadership sees in MaxIQ,
-    # and puts the model's forecast call next to MaxIQ's own call.
-    def _delta_cell(mine, theirs):
-        if not theirs:
-            return '<td class="num" style="color:#bbb;">&mdash;</td>'
-        d = mine - theirs
-        pct = 100 * d / theirs
-        if abs(pct) < 1.0:
-            col, mark = "#27ae60", "&#10003;"
-        elif abs(pct) < 5.0:
-            col, mark = "#e67e22", ""
-        else:
-            col, mark = "#c0392b", "&#9888;"
-        return (f'<td class="num" style="color:{col};font-weight:600;">'
-                f'{d/1e6:+.1f}M ({pct:+.1f}%) {mark}</td>')
-
-    _mp = maxiq["prior"]
-    _tie_rows = [
-        ("Open pipeline (Going Live)", total_pipeline, maxiq["open"], _mp["open"]),
-        ("Deployed / banked (Live)",   total_deployed, maxiq["live"], _mp["live"]),
-        ("Wins booked (Won)",          float(won_qtd["won_acv"]), maxiq["won"], _mp["won"]),
-        ("Target",                     total_target,   maxiq["target"], _mp["target"]),
-    ]
-    _call_rows = [
-        ("Commit",      agg_m4["commit"],  maxiq["commit"], _mp["commit"]),
-        ("Most Likely", agg_m4["ml"],      maxiq["ml"],     _mp["ml"]),
-        ("Stretch / Best Case", agg_m4["stretch"], maxiq["best"], _mp["best"]),
-    ]
-
-    def _wow_cell(now, prior):
-        if not prior or not now:
-            return '<td class="num" style="color:#bbb;">&mdash;</td>'
-        d = now - prior
-        col = "#27ae60" if d >= 0 else "#c0392b"
-        return (f'<td class="num" style="color:{col};">{d/1e6:+.1f}M</td>')
-
-    tie_html = "".join(
-        f"<tr><td>{label}</td><td class='num'>{fmt_m(mine)}</td>"
-        f"<td class='num'>{fmt_m(theirs) if theirs else '&mdash;'}</td>"
-        f"{_delta_cell(mine, theirs)}"
-        f"<td class='num' style='color:#888;'>{fmt_m(prior) if prior else '&mdash;'}</td>"
-        f"{_wow_cell(theirs, prior)}</tr>"
-        for label, mine, theirs, prior in _tie_rows
-    )
-    call_html = "".join(
-        f"<tr><td>{label}</td><td class='num'>{fmt_m(mine)}</td>"
-        f"<td class='num'>{fmt_m(theirs) if theirs else '&mdash;'}</td>"
-        f"{_delta_cell(mine, theirs)}"
-        f"<td class='num' style='color:#888;'>{fmt_m(prior) if prior else '&mdash;'}</td>"
-        f"{_wow_cell(theirs, prior)}</tr>"
-        for label, mine, theirs, prior in _call_rows
-    )
-
-    _ml_gap = agg_m4["ml"] - maxiq["ml"] if maxiq["ml"] else 0
-    if maxiq["ml"] and abs(_ml_gap) / maxiq["ml"] > 0.15:
-        _call_note = (
-            f'<div class="caution" style="margin-top:10px;"><strong>Forecast call diverges '
-            f'from MaxIQ:</strong> the model\'s Most Likely is {fmt_m(agg_m4["ml"])} against '
-            f'MaxIQ\'s {fmt_m(maxiq["ml"])} &mdash; a {_ml_gap/1e6:+.0f}M gap. '
-            f'{"Pre-quarter MaxIQ calls are typically conservative because reps have not committed yet, while the model grosses up for pipeline not yet created. Treat the range, not either endpoint, as the answer." if not IN_QUARTER else "Worth reconciling before the forecast call."}</div>'
-        )
-    else:
-        _call_note = (
-            '<div class="insight" style="margin-top:10px;">Model forecast call is within 15% '
-            'of MaxIQ across all three cases &mdash; no reconciliation needed.</div>'
-        )
-
-    html_parts.append(f"""
-<!-- MaxIQ tie-out -->
-<details class="model-breakdown" open>
-  <summary><h3>MaxIQ Tie-Out &mdash; {QLABEL}</h3></summary>
-  <p style="font-size:0.8em;color:#666;margin:6px 0 10px;">
-    Source of truth: <code>SALES.REPORTING.PEAK_FORECAST_CALLS_PIPELINE_TARGETS</code>
-    ({GVP}, {FQ_KEY}, <code>FUNCTION='GVP'</code> rollup row). Open pipeline counts
-    Stage 1&ndash;6 only &mdash; Stage 0 is unqualified, Stage 7 is deployed, Stage 8 is lost.
-    <br><strong>Reading a MaxIQ view a week behind is the usual source of a phantom gap</strong>
-    &mdash; the prior-week column is shown so either view can be reconciled. Note also that
-    summing MaxIQ SubRegion Lead rows undercounts the GVP rollup, because a few sub-regions
-    have no assigned lead.
-  </p>
-  <table class="model-table">
-    <thead>
-      <tr><th>Pipeline measure</th><th class="num">This report</th>
-          <th class="num">MaxIQ (current)</th><th class="num">Delta</th>
-          <th class="num">MaxIQ (prior wk)</th><th class="num">WoW</th></tr>
-    </thead>
-    <tbody>{tie_html}</tbody>
-  </table>
-  <table class="model-table" style="margin-top:14px;">
-    <thead>
-      <tr><th>Forecast call</th><th class="num">Model (M4)</th>
-          <th class="num">MaxIQ (current)</th><th class="num">Delta</th>
-          <th class="num">MaxIQ (prior wk)</th><th class="num">WoW</th></tr>
-    </thead>
-    <tbody>{call_html}</tbody>
-  </table>
-  {_call_note}
-</details>
-""")
-
     # ── Model Breakdown ───────────────────────────────────────────────────────
     html_parts.append(f"""
 <!-- Model Breakdown -->
@@ -1404,8 +1181,6 @@ def generate_html(regions, targets, yoy_total, districts, wins_data,
 
     for r, m1, m2, m3, m4 in region_models:
         reg = r["REGION"]
-        if reg in SUPPRESS_REGION_CARDS:
-            continue
         html_parts.append(region_card_html(r, targets.get(reg, 0), m1, m3, m4, yoy_total))
 
     html_parts.append("</div><!-- end region grid -->\n")
@@ -1431,8 +1206,7 @@ def generate_html(regions, targets, yoy_total, districts, wins_data,
   </thead>
   <tbody>
 """)
-    for idx, (r, m1, m2, m3, m4) in enumerate(
-            [t for t in region_models if t[0]["REGION"] not in SUPPRESS_REGION_CARDS]):
+    for idx, (r, m1, m2, m3, m4) in enumerate(region_models):
         reg    = r["REGION"]
         tgt    = targets.get(reg, 0)
         bg     = "background:#fafafa;" if idx % 2 == 1 else ""
@@ -1603,64 +1377,9 @@ def append_tracking_csv(m4_totals, target_acv):
 
 # ─────────────────────────── Main ────────────────────────────────────────────
 
-def apply_calibration(conn):
-    """
-    Recalibrate M3 rates and M2 pacing at THIS run's horizon.
-
-    The values in QUARTERS are only a fallback. Without this, a scheduled run
-    would keep applying rates measured on the day they were first hardcoded —
-    which is precisely how the report drifted out of correctness before: by day
-    40 the pre-quarter rates understated conversion and overstated new pipeline.
-    Recalibrating each run keeps the model honest as the quarter progresses.
-    """
-    try:
-        import peak_calibrate as pc
-    except ImportError:
-        print("  ! peak_calibrate.py not importable — using fallback rates")
-        return False
-
-    day_offset = DAY_IN_QUARTER if IN_QUARTER else -abs(DAYS_TO_OPEN) + 1
-    try:
-        m3_avg, m3_min, m2_pace = pc.get_rates(conn, day_offset)
-    except Exception as exc:
-        print(f"  ! calibration failed ({exc}) — using fallback rates")
-        return False
-
-    g = globals()
-    g["M3_AVG_IMP_RATE"]   = m3_avg["imp"]
-    g["M3_AVG_TW_RATE"]    = m3_avg["tw"]
-    g["M3_AVG_PRETW_RATE"] = m3_avg["pretw"]
-    g["M3_AVG_NEW_PCT"]    = m3_avg["new"]
-    g["M3_MIN_IMP_RATE"]   = m3_min["imp"]
-    g["M3_MIN_TW_RATE"]    = m3_min["tw"]
-    g["M3_MIN_PRETW_RATE"] = m3_min["pretw"]
-    g["M3_MIN_NEW_PCT"]    = m3_min["new"]
-    g["M2_PACE"]           = m2_pace
-
-    # M2 availability drives the M4 weights, so both are re-derived here rather
-    # than left at whatever the module-level defaults computed.
-    m2_active = bool(m2_pace) and IN_QUARTER and DAY_IN_QUARTER >= M2_RELIABLE_DAY
-    g["M2_ACTIVE"] = m2_active
-    if m2_active:
-        g["M4_W1"], g["M4_W2"], g["M4_W3"] = _M4_RAW_W1, _M4_RAW_W2, _M4_RAW_W3
-    else:
-        _d = _M4_RAW_W1 + _M4_RAW_W3
-        g["M4_W1"], g["M4_W2"], g["M4_W3"] = _M4_RAW_W1 / _d, 0.0, _M4_RAW_W3 / _d
-
-    horizon = (f"day {day_offset}" if day_offset >= 1
-               else f"{abs(day_offset) + 1} days pre-open")
-    print(f"  Calibrated @ {horizon}: IMP {m3_avg['imp']:.3f} TW {m3_avg['tw']:.3f} "
-          f"PreTW {m3_avg['pretw']:.3f} new {m3_avg['new']:.3f} | "
-          f"M2 {'pace ' + str(m2_pace['avg']) if m2_pace else 'N/A'}")
-    return True
-
-
 def main():
     print(f"Connecting to Snowflake ({CONNECTION_NAME}) …")
     conn = get_conn()
-
-    print("Recalibrating rates at current horizon …")
-    apply_calibration(conn)
 
     horizon = (f"day {DAY_IN_QUARTER} of {QDAYS}, {DAYS_REMAINING} remaining"
                if IN_QUARTER else f"{DAYS_TO_OPEN} days before open")
@@ -1677,9 +1396,6 @@ def main():
 
     print(f"Querying {PRIOR_LABEL} actuals …")
     PRIOR_ACTUALS.update(query_prior_actuals(conn))
-
-    print("Querying MaxIQ tie-out figures …")
-    maxiq = query_maxiq(conn)
 
     print("Querying deployed (banked) ACV …")
     deployed_by_region = query_deployed(conn)
@@ -1708,18 +1424,6 @@ def main():
     print(f"  District rows: {len(districts)}")
     print(f"  Wins Pre-TW: ${wins_data['pretw_total']/1e6:.1f}M "
           f"({wins_data['pretw_cnt']} UCs)")
-    def _tie(label, mine, theirs):
-        if not theirs:
-            return f"    {label:<26} {mine/1e6:>8.1f}M   (no MaxIQ value)"
-        d = mine - theirs
-        flag = "OK" if abs(d) / theirs < 0.01 else "CHECK"
-        return (f"    {label:<26} {mine/1e6:>8.1f}M vs {theirs/1e6:>8.1f}M  "
-                f"{d/1e6:+7.2f}M  {flag}")
-    print("  MaxIQ tie-out:")
-    print(_tie("open pipeline", total_pipeline, maxiq["open"]))
-    print(_tie("deployed (Live)", total_deployed, maxiq["live"]))
-    print(_tie("wins booked (Won)", float(won_qtd["won_acv"]), maxiq["won"]))
-    print(_tie("target", sum(targets.values()), maxiq["target"]))
     print(f"  M2 active: {M2_ACTIVE}  |  M4 weights "
           f"M1 {M4_W1*100:.1f}% / M2 {M4_W2*100:.1f}% / M3 {M4_W3*100:.1f}%")
 
@@ -1732,7 +1436,7 @@ def main():
 
     print("Generating HTML …")
     html = generate_html(regions, targets, yoy_total, districts, wins_data,
-                         deployed_by_region, won_qtd, maxiq)
+                         deployed_by_region, won_qtd)
 
     fname = f"PEAK_AMSExpansion_{QLABEL.replace(' ', '')}.html"
     out_path = Path.home() / "Desktop" / fname
@@ -1740,34 +1444,6 @@ def main():
     print(f"Report written: {out_path}")
 
     append_tracking_csv(agg, total_target_acv)
-
-    # Per-region model output, written so downstream comms quote exactly what
-    # the report shows rather than a separately-computed number.
-    reg_csv = Path.home() / "Desktop" / f"PEAK_region_detail_{QLABEL.replace(' ','')}.csv"
-    with open(reg_csv, "w", newline="") as f:
-        w = csv.writer(f)
-        w.writerow(["quarter", "region", "rvp", "uc_count", "open_acv",
-                    "deployed_acv", "target", "m4_commit", "m4_ml", "m4_stretch",
-                    "ml_pct_of_target", "imp_acv", "tw_acv", "pretw_acv",
-                    "pretw_pct_of_open", "stale_imp_cnt", "stale_imp_acv",
-                    "stale_tw_cnt", "no_next_steps", "prior_year_actual"])
-        for r, m1, m2, m3, m4 in rm:
-            reg = r["REGION"]
-            dep = float((deployed_by_region.get(reg) or {}).get("DEPLOYED_ACV") or 0)
-            tgt = float(targets.get(reg) or 0)
-            open_acv = float(r["TOTAL_ACV"] or 0)
-            pretw = float(r["PRETW_TOTAL"] or 0)
-            w.writerow([QLABEL, reg, r.get("RVP", ""), r["UC_COUNT"],
-                        round(open_acv), round(dep), round(tgt),
-                        round(m4["commit"]), round(m4["ml"]), round(m4["stretch"]),
-                        (round(100 * m4["ml"] / tgt, 1) if tgt else ""),
-                        round(float(r["IMP_TOTAL"] or 0) + float(r["STAGE6_ACV"] or 0)),
-                        round(float(r["TW_TOTAL"] or 0)), round(pretw),
-                        (round(100 * pretw / open_acv) if open_acv else ""),
-                        r["STALE_IMP_CNT"], round(float(r["STALE_IMP_ACV"] or 0)),
-                        r["STALE_TW_CNT"], r["NO_NEXT_STEPS"],
-                        round(PRIOR_ACTUALS.get(reg, 0))])
-    print(f"Region detail written: {reg_csv}")
     return out_path
 
 

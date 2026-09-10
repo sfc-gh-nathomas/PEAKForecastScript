@@ -1,0 +1,172 @@
+# PEAK Q3 + Q4 FY27 — Slack drafts for Jaime Patel's directs
+# Generated Sep 9, 2026. NOT SENT — awaiting review.
+#
+# SOURCE: SALES.REPORTING.PEAK_USE_CASE_FORECAST (PEAK-native, MaxIQ's own source).
+#   open pipeline = stage 1-6 | deployed = stage 7 | won = TECHNICAL_WIN='Yes' + stage 4-7
+#   Ties to MaxIQ: Q3 open -0.05%, deployed +0.1%, won exact; Q4 open exact, won exact.
+#
+# AMSExpansion headline numbers used in all five messages:
+#   Q3 FY27 (day 40 of 92, 53 days left)
+#     Banked (deployed):  $63.8M
+#     Open pipeline:      $144.1M   (+57% YoY vs $91.7M)
+#     Wins booked QTD:    $78.0M    (ties MaxIQ exactly)
+#     M4 Most Likely:     $187.4M vs $189.8M target = 99%
+#     M4 Commit/Stretch:  $169.7M / $209.1M
+#     MaxIQ call:         Commit $170M / ML $190M / Best $205M  (model agrees)
+#   Q4 FY27 (opens in 53 days)
+#     Open pipeline:      $253.3M   (-7% YoY vs $271.7M)
+#     M4 Most Likely:     $194.1M vs $189.8M target = 102%
+#     M4 Commit/Stretch:  $94.7M / $253.3M
+#     MaxIQ call:         Commit $100M / ML $115M / Best $165M  (model is +$79M on ML)
+#     Q4 FY26 actual:     $149M
+#     >> Q4 ML still unresolved — see review notes before sending.
+
+================================================================================
+ROBERT SILVA  —  @robert.silva  (WEJNGRQQN)
+================================================================================
+Hey Robert — two deadlines this week.
+
+*Week 7 snapshot — due Friday*
+Q3 is at day 40 of 92, 53 days left. AMSExpansion:
+• Banked (deployed): $63.8M
+• Open pipeline: $144.1M
+• Wins booked QTD: $78.0M
+• Most Likely: $187.4M vs $189.8M target — 99%
+
+Your book (NortheastExp + SoutheastExp): $14.2M banked, $42.4M open, $19.0M won.
+
+We're sitting right on target on the Most Likely call, but all of it still has to
+convert. Please get your snapshot in by Friday EOD.
+
+*Q4 out-quarter call with JB — Monday*
+Q4 needs to be clean and tight for this one.
+• Q4 open pipeline: $253.3M — down 7% YoY (was $271.7M at this point last year)
+• Most Likely: $194.1M vs $189.8M target
+• For reference, Q4 FY26 landed at $149M
+
+Your Q4: $85.7M open, but 51% of it hasn't hit tech win yet.
+
+Two things worth scrubbing before Monday: half your Q4 book is still pre-tech-win,
+and the forecast leans on pipeline that doesn't exist yet — historically ~63% of
+what deploys in Q4 isn't in the pipeline at this point in the year. Tighten
+go-live dates and stage hygiene where you can.
+
+================================================================================
+BEN GREENE  —  @ben.greene  (WEGJDFTFS)
+================================================================================
+Hey Ben — two deadlines this week.
+
+*Week 7 snapshot — due Friday*
+Q3 is at day 40 of 92, 53 days left. AMSExpansion:
+• Banked (deployed): $63.8M
+• Open pipeline: $144.1M
+• Wins booked QTD: $78.0M
+• Most Likely: $187.4M vs $189.8M target — 99%
+
+Your book (Commercial + USGrowthExp): $20.4M banked, $39.5M open, $22.7M won
+— most banked ACV in the org.
+
+We're sitting right on target on the Most Likely call, but all of it still has to
+convert. Please get your snapshot in by Friday EOD.
+
+*Q4 out-quarter call with JB — Monday*
+Q4 needs to be clean and tight for this one.
+• Q4 open pipeline: $253.3M — down 7% YoY (was $271.7M at this point last year)
+• Most Likely: $194.1M vs $189.8M target
+• For reference, Q4 FY26 landed at $149M
+
+Your Q4: $50.2M open, 37% still pre-tech-win — best stage mix of the five.
+
+One thing worth scrubbing before Monday: the forecast leans on pipeline that
+doesn't exist yet — historically ~63% of what deploys in Q4 isn't in the pipeline
+at this point. Your mix is healthier than most, so the ask is mainly holding
+go-live dates firm.
+
+================================================================================
+DANIEL GOSTRER  —  @daniel.gostrer  (WDY7LQGQL)
+================================================================================
+Hey Daniel — two deadlines this week.
+
+*Week 7 snapshot — due Friday*
+Q3 is at day 40 of 92, 53 days left. AMSExpansion:
+• Banked (deployed): $63.8M
+• Open pipeline: $144.1M
+• Wins booked QTD: $78.0M
+• Most Likely: $187.4M vs $189.8M target — 99%
+
+Your book (NorthwestExp + SouthwestExp): $16.2M banked, $36.2M open, $22.3M won.
+
+We're sitting right on target on the Most Likely call, but all of it still has to
+convert. Please get your snapshot in by Friday EOD.
+
+*Q4 out-quarter call with JB — Monday*
+Q4 needs to be clean and tight for this one.
+• Q4 open pipeline: $253.3M — down 7% YoY (was $271.7M at this point last year)
+• Most Likely: $194.1M vs $189.8M target
+• For reference, Q4 FY26 landed at $149M
+
+Your Q4: $61.0M open, and 55% of it hasn't hit tech win yet — softest mix in the org.
+
+That pre-tech-win share is the thing to work before Monday. The forecast also
+leans on pipeline that doesn't exist yet (~63% of Q4 deploys typically aren't in
+the pipeline at this point), so anything you can pull to tech win now materially
+de-risks the call.
+
+================================================================================
+JOSH CHACONA  —  @josh.chacona  (WFTG1EG1G)
+================================================================================
+Hey Josh — two deadlines this week.
+
+*Week 7 snapshot — due Friday*
+Q3 is at day 40 of 92, 53 days left. AMSExpansion:
+• Banked (deployed): $63.8M
+• Open pipeline: $144.1M
+• Wins booked QTD: $78.0M
+• Most Likely: $187.4M vs $189.8M target — 99%
+
+Your book (CentralExp): $10.0M banked, $16.6M open, $8.2M won.
+
+We're sitting right on target on the Most Likely call, but all of it still has to
+convert. Please get your snapshot in by Friday EOD.
+
+*Q4 out-quarter call with JB — Monday*
+Q4 needs to be clean and tight for this one.
+• Q4 open pipeline: $253.3M — down 7% YoY (was $271.7M at this point last year)
+• Most Likely: $194.1M vs $189.8M target
+• For reference, Q4 FY26 landed at $149M
+
+Your Q4: $36.9M open — more than double your Q3 book — with 53% still pre-tech-win.
+
+That step up is the thing to be able to speak to on Monday. Worth scrubbing the
+go-live dates on the Q4 set, and the forecast leans on pipeline that doesn't exist
+yet (~63% of Q4 deploys typically aren't in the pipeline at this point).
+
+================================================================================
+NAV ANAND  —  @nav.anand  (U0948P4HMJT)
+================================================================================
+Hey Nav — two deadlines this week.
+
+*Week 7 snapshot — due Friday*
+Q3 is at day 40 of 92, 53 days left. AMSExpansion:
+• Banked (deployed): $63.8M
+• Open pipeline: $144.1M
+• Wins booked QTD: $78.0M
+• Most Likely: $187.4M vs $189.8M target — 99%
+
+Your book (CanadaExp): $2.7M banked, $8.9M open, $5.4M won.
+
+We're sitting right on target on the Most Likely call, but all of it still has to
+convert. Please get your snapshot in by Friday EOD.
+
+*Q4 out-quarter call with JB — Monday*
+Q4 needs to be clean and tight for this one.
+• Q4 open pipeline: $253.3M — down 7% YoY (was $271.7M at this point last year)
+• Most Likely: $194.1M vs $189.8M target
+• For reference, Q4 FY26 landed at $149M
+
+Your Q4: $17.7M open, 37% still pre-tech-win — good stage mix.
+
+Your Q3 banked number is light relative to your open pipeline, so that's the one
+to be ready on. On Q4 the mix looks healthy; the ask is mainly holding go-live
+dates firm, since the forecast leans on pipeline that doesn't exist yet (~63% of
+Q4 deploys typically aren't in the pipeline at this point).
