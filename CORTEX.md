@@ -26,9 +26,17 @@ or `CC_USAGE_CACHE`, re-run `GRANT SELECT` to `SALES_STREAMLIT_RL`.
 
 ## VELOCITY_CACHE is stale and not on the hourly pipeline
 `SNOWPUBLIC.STREAMLIT.VELOCITY_CACHE` is refreshed ONLY by manually running
-`velocity_cache_refresh.sql` in this folder. Unlike every other cache the app
-reads, it is NOT wired into the hourly SYSTEM refresh. Last write was
-2026-06-05 (confirmed via ACCESS_HISTORY: 6 writes total, all manual).
+`velocity_cache_refresh.sql` in this folder. It is NOT wired into the hourly
+SYSTEM refresh that keeps the other caches current.
+
+Verified 2026-09-10 via `SNOWPUBLIC.INFORMATION_SCHEMA.TABLES`:
+- `VELOCITY_CACHE` last altered 2026-08-07 — 34 days stale, 35 rows
+- `CC_USAGE_CACHE` last altered 2026-07-26 — 46 days stale, also NOT refreshing
+- `PIPELINE_MOVEMENTS_CACHE` last altered today — this one IS current
+
+(Note: the comment header inside `velocity_cache_refresh.sql` claims the last
+write was 2026-06-05. That was true when the file was written; it has been
+refreshed once since. Trust INFORMATION_SCHEMA over the header.)
 
 Consumed by `peak_app_sis.py`:
 - `q_use_case_velocity()` -> `METRIC_TYPE='stage_transition'`
@@ -40,8 +48,14 @@ deployed ACV" read today actually reflects the 7 days before the last refresh
 date, not the last 7 days. The `stage_transition` averages degrade more slowly
 (long-run averages over everything created since 2025-02-01).
 
-Before trusting any velocity number from this app, check when VELOCITY_CACHE was
-last written and re-run the refresh if needed.
+Before trusting any velocity number from this app, check staleness:
+```sql
+SELECT TABLE_NAME, LAST_ALTERED,
+       DATEDIFF(day, LAST_ALTERED, CURRENT_TIMESTAMP()) AS DAYS_STALE
+FROM SNOWPUBLIC.INFORMATION_SCHEMA.TABLES
+WHERE TABLE_SCHEMA='STREAMLIT'
+  AND TABLE_NAME IN ('VELOCITY_CACHE','CC_USAGE_CACHE','PIPELINE_MOVEMENTS_CACHE');
+```
 
 ## Forecast methods
 M1 Pipeline Risk, M2 Historical Pacing, M3 Stage Conversion,
