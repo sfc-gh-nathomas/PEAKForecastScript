@@ -93,6 +93,125 @@ WHERE TABLE_SCHEMA='STREAMLIT'
   AND TABLE_NAME IN ('VELOCITY_CACHE','CC_USAGE_CACHE','PIPELINE_MOVEMENTS_CACHE');
 ```
 
+## Wins tab — gate on DECISION_DATE, exclude Stage 0
+Wins are DECISION_DATE events. Any wins-tab population filter MUST use
+`DECISION_DATE BETWEEN quarter_start AND quarter_end` and
+`STAGE_NUMBER BETWEEN 1 AND 6`. Never `GO_LIVE_DATE` — that is a different
+milestone and selects a different population.
+
+Fixed 2026-09-17 in `q_wins_open_pipeline()` and `q_wins_top5()`, which both
+gated on `GO_LIVE_DATE`. Effect was severe: the open-pipeline headline read
+$10.49M against a true $196.72M (74 UCs instead of 1,338, only 47 overlapping),
+and the "top open wins" list was drawn from that 5% pool — showing Securonix
+$1.0M as #1 when the real #1 was Fanatics Holdings at $5.0M. Nine of ten
+displayed rows did not belong.
+
+Cross-check after ANY change to these filters — it ties exactly:
+```sql
+SELECT SUM(FORECAST_AMOUNT) FROM SALES.REPORTING.PEAK_FORECAST_CALLS_PIPELINE_TARGETS
+WHERE USER_NAME='Mark Fleming' AND FUNCTION='GVP' AND TYPE='Use Case Wins'
+  AND FORECAST_TYPE='Open' AND FISCAL_QUARTER='2027-Q3' AND LATEST_DATE=TRUE;
+-- 196,724,457.41 == patched q_wins_open_pipeline for FY27-Q3
+```
+Stage 0 ("Not In Pursuit") is worth $9.89M here — including it is what breaks
+the tie to MaxIQ.
+
+STILL OPEN: `q_wins_risk_analysis()` has no quarter filter at all and uses raw
+`ACCOUNT_GVP = '{gvp}'` instead of `_gvp_filter()`, so it misses accounts with
+NULL `ACCOUNT_GVP`. Not yet fixed.
+
+## CoCo Adoption on the Go-Lives tab (replaced Cortex Code CLI Usage)
+The old "Cortex Code CLI Usage (Last 90 Days)" table was removed 2026-09-17. It
+read `SNOWPUBLIC.STREAMLIT.CC_USAGE_CACHE`, which stopped refreshing 2026-07-26
+(53 days stale at removal) — it had been showing dead numbers.
+
+Replaced by a theater-level CoCo Adoption block ported from the 2x2 dashboard
+(`/Users/nathomas/Cortex Code Projects/SalesDashboard/sales_dashboard.py`),
+plus two things the 2x2 does NOT have: weekly tier movement and go-live insights.
+
+### There is no "CoCo budget"
+The bucketing dimension is `ACCOUNT_TIER` — a 5-level ENGAGEMENT ladder
+(`Zero Usage, Exploring, Activated, Expanded, Deep`) precomputed upstream in
+`SALES.REPORTING.COCO_ACCOUNT_COCO_USAGE`. Thresholds are engaged-user counts and
+their share of `UNBLOCKED_SF_USERS` over 28 days. **Credits are never involved.**
+Do not describe tiers as spend or budget bands.
+
+### Scope decision — GEO_NAME, not the PEAK GVP filter
+Tier cards use `GEO_NAME = _theater()` (5,042 accounts for AMSExpansion), NOT
+`_gvp_filter()`. The 2x2 scopes by GVP person name and gets 5,659 — a ~600
+account difference. GEO_NAME was chosen deliberately as the true theater
+definition. `q_coco_golive_insights()` DOES use `_gvp_filter()`, because that
+question is about accounts with go-lives, not the theater book. Two different
+scopes on one tab is intentional; do not "fix" one to match the other.
+
+Verified 2026-09-17 (as of DS 2026-09-16): 5,042 capacity accounts —
+Zero Usage 638, Exploring 1,330, Activated 2,587, Expanded 439, Deep 48
+(sums to 5,042). Set Sail L28 77 vs prior 58.
+Weekly movement nets to zero across tiers (−287 +182 +84 +19 +2 = 0).
+
+Two query gotchas:
+- Use `IS_YESTERDAY = TRUE`, NOT a correlated `MAX(DS)` subquery. `MAX(DS)`
+  against this 4.6M-row table times out at 180s.
+- Take Zero Usage from the EXPLICIT `'Zero Usage'` rows. The 2x2 derives it by
+  subtraction instead, so our count will not tie to its sparkline. Expected.
+
+### CoCo Skill Match is NOT semantic matching
+`_coco_skill_match_cte()` ports the 2x2 exactly: a string-equality join of the
+use case's `WORKLOADS` tokens against `CORTEX_CODE_SKILL_ACCT_CACHE.WORKLOAD_CATEGORY`
+for the SAME ACCOUNT. No AI, no embeddings, no keyword match, no use-case→skill
+mapping table. It answers "has this ACCOUNT used CoCo skills in this use case's
+product categories" — so two use cases at one account with equal `WORKLOADS`
+always score identically. Tiers: n==0 None; n>=3 or sessions>=30 High;
+n>=2 or sessions>=10 Medium; else Low.
+
+`WORKLOADS` tokens must equal `WORKLOAD_CATEGORY` exactly, including the
+ampersand in `Applications & Collaboration`. Normalisation drift silently
+yields 'None' rather than erroring.
+
+Verified distribution over 733 FY27-Q3 go-live use cases: High 444, None 118,
+Medium 89, Low 82 — 615/733 = 83.9% have at least one match. It discriminates
+here, but on the DEPLOYED population it saturates (top 20 all High), so do not
+reuse it as a ranking key.
+
+### CORTEX_CODE_SKILL_ACCT_CACHE staleness — STILL OPEN
+`LAST_ALTERED 2026-08-10` understates it: the data was built with a 90-day
+window ending 2026-07-10, so it is ~69 days stale, not 38. There is NO refresh
+task; the similarly-named `CORTEX_CODE_ACCT_COCO_CACHE_REFRESH_TASK` targets a
+DIFFERENT table. Both this app and the 2x2 silently inherit the staleness.
+
+A refresh procedure + task is drafted and compile-verified but NOT yet deployed.
+Blockers and cautions recorded before running it:
+- True upstream is `SNOWSCIENCE.LLM.CORTEX_CODE_SKILL_DAY_FACT` (NOT
+  `CORTEX_CODE_ACCOUNT_DAY_FACT`, which has no skill column). Semantics proven
+  to 99.15% exact match on `SESSIONS_90D` when reconstructed at the 2026-07-10 window.
+- `WORKLOAD_CATEGORY` is NOT derivable — no mapping table exists. The 29-skill
+  catalog is a human curation over 28,832 upstream skill names and must stay hardcoded.
+- The table is owned by `ROLE PUBLIC`, unlike every other cache here
+  (`SALES_ENGINEER`). Refreshing requires `GRANT OWNERSHIP ... COPY CURRENT GRANTS` first.
+- It carries a manual `SELECT` grant to `PUBLIC` that `CREATE OR REPLACE` would drop.
+- Refreshing WILL move numbers in both dashboards: four skills have effectively
+  died, almost certainly renames — `cortex-ai-functions` 2,660→18 accounts,
+  `snowsight-performance-summary` 2,441→19, `streamlit` 601→6,
+  `developing-with-streamlit` 679→168. Because the tier scores on distinct
+  matched skill COUNT, some accounts drop a tier even though total sessions grew.
+  Back the table up first — current contents are not reproducible once replaced.
+
+### Join key trap — RESOLVED_USE_CASE_ID, not USE_CASE_ID
+`_use_case_select_cols()` aliases `u.RESOLVED_USE_CASE_ID AS USE_CASE_ID`, so every
+row dict reaching `build_use_case_row()` is keyed on the RESOLVED id. Anything that
+joins back to those rows by id MUST also select `RESOLVED_USE_CASE_ID AS USE_CASE_ID`.
+
+They differ on **364 of 744** FY27-Q3 go-live rows (~49%). Caught 2026-09-17 when
+the skill match keyed on the raw `USE_CASE_ID` and 3 of the top 5 rows silently
+rendered no skill line — no error, just a missing line. Both
+`q_coco_skill_match_by_uc()` and `q_coco_golive_insights()` now use RESOLVED.
+
+The skill match renders INLINE in col1 next to ACV / run rate / CC metrics, not as
+its own table column — the Top 5 table stays 3 columns.
+
+Verified after the fix: 5/5 top rows carry the line; 725 use cases scored;
+608/725 = 83.9% matched across 564 go-live accounts.
+
 ## Forecast methods
 M1 Pipeline Risk, M2 Historical Pacing, M3 Stage Conversion,
 M4 Weighted Ensemble (inverse error weighting).

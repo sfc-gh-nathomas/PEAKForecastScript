@@ -615,7 +615,15 @@ def q_wins_forecast_calls():
 
 
 def q_wins_open_pipeline():
-    """Open pipeline for wins — not yet won, not lost, GO_LIVE_DATE in quarter."""
+    """
+    Open pipeline for wins — not yet won, not lost, DECISION_DATE in quarter.
+
+    Wins are DECISION_DATE events, not go-live events; gating this on
+    GO_LIVE_DATE selected a different population entirely. Stage 0
+    ("Not In Pursuit") is excluded — it is not real pipeline.
+    Verified 2026-09-17: this ties to MaxIQ 'Open' for FY27-Q3 exactly
+    ($196,724,457.41). Do NOT reintroduce a GO_LIVE_DATE gate here.
+    """
     qs, qe = CONFIG["quarter_start"], CONFIG["quarter_end"]
     rows = run_query(f"""
         SELECT SUM(USE_CASE_EACV) as OPEN_ACV, COUNT(*) as OPEN_COUNT
@@ -624,14 +632,21 @@ def q_wins_open_pipeline():
           AND USE_CASE_EACV > 0
           AND IS_WON = FALSE
           AND COALESCE(IS_LOST, FALSE) = FALSE
-          AND GO_LIVE_DATE BETWEEN '{qs}' AND '{qe}'
+          AND STAGE_NUMBER BETWEEN 1 AND 6
+          AND DECISION_DATE BETWEEN '{qs}' AND '{qe}'
     """)
     r = rows[0] if rows else {}
     return {"acv": safe_float(r.get("OPEN_ACV") or 0), "count": safe_int(r.get("OPEN_COUNT") or 0)}
 
 
 def q_wins_top5():
-    """Top 5 open-pipeline UCs by ACV for the wins tab."""
+    """
+    Top open-pipeline UCs by ACV for the wins tab (returns up to 10).
+
+    Population MUST match q_wins_open_pipeline: DECISION_DATE in quarter and
+    STAGE_NUMBER 1-6. A GO_LIVE_DATE gate here previously drew the "top" list
+    from ~5% of the real pipeline and buried the largest opportunities.
+    """
     qs, qe = CONFIG["quarter_start"], CONFIG["quarter_end"]
     rows = run_query(f"""
         SELECT u.USE_CASE_ID, u.USE_CASE_NAME, u.USE_CASE_EACV, u.USE_CASE_STAGE,
@@ -644,7 +659,8 @@ def q_wins_top5():
           AND u.USE_CASE_EACV > 0
           AND u.IS_WON = FALSE
           AND COALESCE(u.IS_LOST, FALSE) = FALSE
-          AND u.GO_LIVE_DATE BETWEEN '{qs}' AND '{qe}'
+          AND u.STAGE_NUMBER BETWEEN 1 AND 6
+          AND u.DECISION_DATE BETWEEN '{qs}' AND '{qe}'
         ORDER BY u.USE_CASE_EACV DESC
         LIMIT 10
     """)
@@ -1224,49 +1240,253 @@ def _create_cc_temp_table():
     return True, -1, None
 
 
-def q_cortex_code_theater_usage():
-    """Cortex Code usage across ALL accounts with open pipeline go-lives in the quarter."""
-    if not CONFIG.get("is_current_quarter"):
-        return {"total_accounts": 0, "cc_accounts": 0, "pct": 0, "avg_users": 0, "requests": 0, "credits": 0}
+COCO_TIER_ORDER = ["Zero Usage", "Exploring", "Activated", "Expanded", "Deep"]
+
+# Verbatim from the 2x2 dashboard so tier semantics stay identical across apps.
+COCO_TIER_DEFINITIONS = (
+    "Tiers are based on the last 28 days of activity. "
+    "Zero Usage = no CoCo activity of any kind. "
+    "Exploring = some usage, but no habitually engaged UI users (3+ active days & 10+ prompts). "
+    "Activated = 1+ habitually engaged UI user, below Expanded/Deep CLI thresholds. "
+    "Expanded = 10%+ of unblocked Snowflake users engaged on UI, plus 2+ engaged CLI/Desktop users. "
+    "Deep = 20%+ engaged UI share, plus 5+ engaged CLI/Desktop users at 10%+ of unblocked users."
+)
+
+
+def q_coco_theater_tiers():
+    """
+    Theater-level CoCo adoption tier counts + Set Sail, ported from the 2x2 dashboard.
+
+    Scope is GEO_NAME = theater (5,042 accounts for AMSExpansion), NOT the PEAK
+    _gvp_filter() Raven lookup — these differ by ~600 accounts and the theater
+    definition was chosen deliberately. COCO_ACCOUNT_COCO_USAGE already carries
+    the full hierarchy, so no join to DIM_ACCOUNTS_SLIM_CACHE is needed.
+
+    Uses IS_YESTERDAY = TRUE rather than MAX(DS): a correlated MAX(DS) subquery
+    against this 4.6M-row table times out at 180s.
+
+    Zero Usage is taken from the EXPLICIT 'Zero Usage' tier rows. The 2x2's
+    sparkline instead derives it by subtraction, so our Zero Usage count will
+    not tie exactly to the 2x2's — that is expected, not a defect.
+    """
+    theater = _theater()
+    try:
+        rows = run_query(f"""
+            SELECT c.DS AS AS_OF,
+                   COUNT(*) AS CAPACITY_ACCOUNTS,
+                   COUNT(CASE WHEN COALESCE(c.ACCOUNT_TIER,'Zero Usage')='Zero Usage' THEN 1 END) AS ZERO_USAGE,
+                   COUNT(CASE WHEN c.ACCOUNT_TIER='Exploring' THEN 1 END) AS EXPLORING,
+                   COUNT(CASE WHEN c.ACCOUNT_TIER='Activated' THEN 1 END) AS ACTIVATED,
+                   COUNT(CASE WHEN c.ACCOUNT_TIER='Expanded'  THEN 1 END) AS EXPANDED,
+                   COUNT(CASE WHEN c.ACCOUNT_TIER='Deep'      THEN 1 END) AS DEEP
+            FROM SALES.REPORTING.COCO_ACCOUNT_COCO_USAGE c
+            WHERE c.IS_YESTERDAY = TRUE AND c.GEO_NAME = '{theater}'
+            GROUP BY c.DS
+        """)
+        if not rows:
+            return {}
+        r = rows[0]
+        out = {
+            "as_of": safe_str(r.get("AS_OF", "")),
+            "capacity": safe_int(r.get("CAPACITY_ACCOUNTS", 0)),
+            "Zero Usage": safe_int(r.get("ZERO_USAGE", 0)),
+            "Exploring": safe_int(r.get("EXPLORING", 0)),
+            "Activated": safe_int(r.get("ACTIVATED", 0)),
+            "Expanded": safe_int(r.get("EXPANDED", 0)),
+            "Deep": safe_int(r.get("DEEP", 0)),
+        }
+        ss = run_query(f"""
+            WITH cur AS (
+              SELECT SALESFORCE_ACCOUNT_ID FROM SALES.REPORTING.COCO_ACCOUNT_COCO_USAGE
+              WHERE IS_YESTERDAY = TRUE AND GEO_NAME = '{theater}'
+            )
+            SELECT COUNT(DISTINCT CASE WHEN a.ACTIVITY_DATE >= DATEADD(day,-28,CURRENT_DATE)
+                                       THEN a.ACCOUNT_ID END) AS SETSAIL_L28,
+                   COUNT(DISTINCT CASE WHEN a.ACTIVITY_DATE >= DATEADD(day,-56,CURRENT_DATE)
+                                        AND a.ACTIVITY_DATE <  DATEADD(day,-28,CURRENT_DATE)
+                                       THEN a.ACCOUNT_ID END) AS SETSAIL_PRIOR
+            FROM SALES.REPORTING.INT_COCO_SETSAIL_ACTIVITY a
+            JOIN cur ON cur.SALESFORCE_ACCOUNT_ID = a.ACCOUNT_ID
+            WHERE a.ACTIVITY_TYPE = 'MEETING'
+              AND (a.IS_RECURRING = TRUE OR a.IS_TECHNICAL_UPSKILL_EVENT = TRUE)
+              AND a.ACTIVITY_DATE >= DATEADD(day,-56,CURRENT_DATE)
+        """)
+        s = ss[0] if ss else {}
+        out["setsail_l28"] = safe_int(s.get("SETSAIL_L28", 0))
+        out["setsail_prior"] = safe_int(s.get("SETSAIL_PRIOR", 0))
+        return out
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def q_coco_tier_movement():
+    """
+    Accounts that moved INTO and OUT OF each CoCo tier over the last 7 days.
+
+    Not present in the 2x2 — its trend query aggregates with COUNT(DISTINCT)
+    per day and so cannot say WHICH accounts moved. This compares the latest
+    snapshot against DS-7 at account grain.
+
+    FULL OUTER JOIN is deliberate: the AMSExpansion universe happens to be
+    stable week-over-week today (no '(new)'/'(gone)' rows), but an inner join
+    would silently drop genuine entries/exits if that changes.
+    """
+    theater = _theater()
+    try:
+        rows = run_query(f"""
+            WITH d AS (
+              SELECT MAX(DS) AS MAXDS FROM SALES.REPORTING.COCO_ACCOUNT_COCO_USAGE
+              WHERE GEO_NAME = '{theater}'
+            ),
+            cur AS (SELECT c.SALESFORCE_ACCOUNT_ID, c.ACCOUNT_TIER
+                    FROM SALES.REPORTING.COCO_ACCOUNT_COCO_USAGE c JOIN d ON c.DS = d.MAXDS
+                    WHERE c.GEO_NAME = '{theater}'),
+            pri AS (SELECT c.SALESFORCE_ACCOUNT_ID, c.ACCOUNT_TIER
+                    FROM SALES.REPORTING.COCO_ACCOUNT_COCO_USAGE c
+                    JOIN d ON c.DS = DATEADD(day,-7,d.MAXDS)
+                    WHERE c.GEO_NAME = '{theater}'),
+            j AS (SELECT COALESCE(p.ACCOUNT_TIER,'(new)')  AS PREV_TIER,
+                         COALESCE(c.ACCOUNT_TIER,'(gone)') AS CUR_TIER
+                  FROM cur c FULL OUTER JOIN pri p
+                    ON c.SALESFORCE_ACCOUNT_ID = p.SALESFORCE_ACCOUNT_ID),
+            t AS (SELECT 'Zero Usage' AS TIER, 1 AS ORD UNION ALL SELECT 'Exploring',2
+                  UNION ALL SELECT 'Activated',3 UNION ALL SELECT 'Expanded',4
+                  UNION ALL SELECT 'Deep',5)
+            SELECT t.TIER,
+                   (SELECT COUNT(*) FROM j WHERE j.CUR_TIER = t.TIER AND j.PREV_TIER <> t.TIER) AS MOVED_IN,
+                   (SELECT COUNT(*) FROM j WHERE j.PREV_TIER = t.TIER AND j.CUR_TIER <> t.TIER) AS MOVED_OUT
+            FROM t ORDER BY t.ORD
+        """)
+        return {safe_str(r.get("TIER", "")): {
+                    "in": safe_int(r.get("MOVED_IN", 0)),
+                    "out": safe_int(r.get("MOVED_OUT", 0)),
+                    "net": safe_int(r.get("MOVED_IN", 0)) - safe_int(r.get("MOVED_OUT", 0)),
+                } for r in rows}
+    except Exception:
+        return {}
+
+
+def _coco_skill_match_cte(alias="u"):
+    """
+    Shared SQL for the 2x2's CoCo skill match, ported verbatim in semantics.
+
+    IMPORTANT — this is NOT semantic matching of a use case to a skill. It is a
+    string-equality join of the use case's WORKLOADS tokens against
+    CORTEX_CODE_SKILL_ACCT_CACHE.WORKLOAD_CATEGORY for the SAME ACCOUNT. It
+    answers "has this ACCOUNT used CoCo skills in this use case's product
+    categories", so two use cases at one account with equal WORKLOADS always
+    score identically. Tier thresholds match the 2x2 exactly:
+    n==0 -> None; n>=3 or sessions>=30 -> High; n>=2 or sessions>=10 -> Medium;
+    else Low. Empty string when WORKLOADS is null/blank.
+
+    WORKLOADS tokens must equal WORKLOAD_CATEGORY exactly, including the
+    ampersand in 'Applications & Collaboration' — any normalisation drift
+    silently yields 'None' rather than an error.
+    """
+    return f"""
+        wl AS (
+          SELECT {alias}.USE_CASE_ID, {alias}.ACCOUNT_ID, {alias}.WORKLOADS,
+                 TRIM(s.VALUE) AS WORKLOAD_CATEGORY
+          FROM uc {alias}, LATERAL SPLIT_TO_TABLE(COALESCE({alias}.WORKLOADS,''), ';') s
+        ),
+        m AS (
+          SELECT wl.USE_CASE_ID, wl.WORKLOADS,
+                 COUNT(DISTINCT c.SKILL_NAME) AS N_SKILLS,
+                 COALESCE(SUM(c.SESSIONS_90D),0) AS TOT_SESS
+          FROM wl
+          LEFT JOIN SNOWPUBLIC.STREAMLIT.CORTEX_CODE_SKILL_ACCT_CACHE c
+            ON c.SALESFORCE_ACCOUNT_ID = wl.ACCOUNT_ID
+           AND c.WORKLOAD_CATEGORY = wl.WORKLOAD_CATEGORY
+          GROUP BY 1, 2
+        )"""
+
+
+def q_coco_skill_match_by_uc():
+    """Map USE_CASE_ID -> CoCo skill confidence tier for this quarter's go-lives."""
     excluded = ", ".join(f"'{s}'" for s in CONFIG["dim_excluded_stages"])
     try:
-        # Step 1: Get all go-live account IDs
-        acct_rows = run_query(f"""
-            SELECT DISTINCT u.ACCOUNT_ID
-            FROM SNOWPUBLIC.STREAMLIT.DIM_USE_CASE_MDM_CACHE u
-            WHERE {_gvp_filter('u')}
-              AND u.USE_CASE_EACV > 0 AND u.IS_DEPLOYED = FALSE AND u.IS_LOST = FALSE
-              AND u.GO_LIVE_DATE BETWEEN '{CONFIG["quarter_start"]}' AND '{CONFIG["quarter_end"]}'
-              AND u.USE_CASE_STAGE NOT IN ({excluded})
-        """)
-        go_live_ids = [str(r["ACCOUNT_ID"]) for r in acct_rows if r.get("ACCOUNT_ID")]
-        total_accounts = len(go_live_ids)
-        if not go_live_ids:
-            return {"total_accounts": 0, "cc_accounts": 0, "pct": 0, "avg_users": 0, "requests": 0, "credits": 0}
-        # Step 2: Query CC cache table
-        id_list = ", ".join(f"'{aid}'" for aid in go_live_ids)
         rows = run_query(f"""
-            SELECT
-                COUNT(DISTINCT SALESFORCE_ACCOUNT_ID) as CC_ACCOUNTS,
-                COALESCE(ROUND(AVG(AVG_DAILY_USERS), 1), 0) as AVG_USERS_PER_ACCT,
-                COALESCE(SUM(TOTAL_REQUESTS), 0) as TOTAL_CC_REQUESTS,
-                COALESCE(SUM(ACTUAL_CREDITS), 0) as TOTAL_CC_CREDITS
-            FROM SNOWPUBLIC.STREAMLIT.CC_USAGE_CACHE
-            WHERE SALESFORCE_ACCOUNT_ID IN ({id_list})
-              AND TOTAL_REQUESTS > 0
+            WITH uc AS (
+              SELECT u.RESOLVED_USE_CASE_ID AS USE_CASE_ID, u.ACCOUNT_ID, u.WORKLOADS
+              FROM SNOWPUBLIC.STREAMLIT.DIM_USE_CASE_MDM_CACHE u
+              WHERE {_gvp_filter('u')}
+                AND u.USE_CASE_EACV > 0 AND u.IS_DEPLOYED = FALSE AND u.IS_LOST = FALSE
+                AND u.GO_LIVE_DATE BETWEEN '{CONFIG["quarter_start"]}' AND '{CONFIG["quarter_end"]}'
+                AND u.USE_CASE_STAGE NOT IN ({excluded})
+            ),
+            {_coco_skill_match_cte('u')}
+            SELECT m.USE_CASE_ID, m.N_SKILLS, m.TOT_SESS,
+                   CASE WHEN m.WORKLOADS IS NULL OR m.WORKLOADS = '' THEN ''
+                        WHEN m.N_SKILLS = 0 THEN 'None'
+                        WHEN m.N_SKILLS >= 3 OR m.TOT_SESS >= 30 THEN 'High'
+                        WHEN m.N_SKILLS >= 2 OR m.TOT_SESS >= 10 THEN 'Medium'
+                        ELSE 'Low' END AS CONFIDENCE
+            FROM m
         """)
-        r = rows[0] if rows else {}
-        cc_accounts = safe_int(r.get("CC_ACCOUNTS", 0))
+        return {safe_str(r.get("USE_CASE_ID", "")): {
+                    "confidence": safe_str(r.get("CONFIDENCE", "")),
+                    "n_skills": safe_int(r.get("N_SKILLS", 0)),
+                    "sessions": safe_int(r.get("TOT_SESS", 0)),
+                } for r in rows}
+    except Exception:
+        return {}
+
+
+def q_coco_golive_insights():
+    """
+    Top-level CoCo insights for accounts with go-lives in the filtered quarter,
+    plus the share of those use cases carrying a CoCo skill match.
+
+    Account scope here is the PEAK _gvp_filter() go-live population (NOT the
+    theater GEO_NAME scope used by the tier cards) because the question is
+    specifically about accounts that have go-lives this quarter.
+    """
+    excluded = ", ".join(f"'{s}'" for s in CONFIG["dim_excluded_stages"])
+    try:
+        rows = run_query(f"""
+            WITH uc AS (
+              SELECT DISTINCT u.RESOLVED_USE_CASE_ID AS USE_CASE_ID, u.ACCOUNT_ID, u.WORKLOADS
+              FROM SNOWPUBLIC.STREAMLIT.DIM_USE_CASE_MDM_CACHE u
+              WHERE {_gvp_filter('u')}
+                AND u.USE_CASE_EACV > 0 AND u.IS_DEPLOYED = FALSE AND u.IS_LOST = FALSE
+                AND u.GO_LIVE_DATE BETWEEN '{CONFIG["quarter_start"]}' AND '{CONFIG["quarter_end"]}'
+                AND u.USE_CASE_STAGE NOT IN ({excluded})
+            ),
+            accts AS (SELECT DISTINCT ACCOUNT_ID FROM uc),
+            tiers AS (
+              SELECT a.ACCOUNT_ID, COALESCE(c.ACCOUNT_TIER,'Zero Usage') AS ACCOUNT_TIER
+              FROM accts a
+              LEFT JOIN SALES.REPORTING.COCO_ACCOUNT_COCO_USAGE c
+                ON c.SALESFORCE_ACCOUNT_ID = a.ACCOUNT_ID AND c.IS_YESTERDAY = TRUE
+            ),
+            {_coco_skill_match_cte('u')}
+            SELECT (SELECT COUNT(*) FROM accts) AS GOLIVE_ACCOUNTS,
+                   (SELECT COUNT(*) FROM tiers WHERE ACCOUNT_TIER <> 'Zero Usage') AS ACCTS_WITH_COCO,
+                   (SELECT COUNT(*) FROM tiers
+                     WHERE ACCOUNT_TIER IN ('Activated','Expanded','Deep')) AS ACCTS_ACTIVATED_PLUS,
+                   (SELECT COUNT(*) FROM uc) AS GOLIVE_UCS,
+                   (SELECT COUNT(*) FROM m WHERE N_SKILLS > 0) AS UCS_WITH_SKILL_MATCH
+        """)
+        if not rows:
+            return {}
+        r = rows[0]
+        accts = safe_int(r.get("GOLIVE_ACCOUNTS", 0))
+        ucs = safe_int(r.get("GOLIVE_UCS", 0))
+        with_coco = safe_int(r.get("ACCTS_WITH_COCO", 0))
+        act_plus = safe_int(r.get("ACCTS_ACTIVATED_PLUS", 0))
+        matched = safe_int(r.get("UCS_WITH_SKILL_MATCH", 0))
         return {
-            "total_accounts": total_accounts,
-            "cc_accounts": cc_accounts,
-            "pct": round(cc_accounts / total_accounts * 100, 1) if total_accounts else 0,
-            "avg_users": safe_float(r.get("AVG_USERS_PER_ACCT", 0)),
-            "requests": safe_int(r.get("TOTAL_CC_REQUESTS", 0)),
-            "credits": round(safe_float(r.get("TOTAL_CC_CREDITS", 0)), 0),
+            "golive_accounts": accts,
+            "accts_with_coco": with_coco,
+            "accts_with_coco_pct": round(with_coco / accts * 100, 1) if accts else 0,
+            "accts_activated_plus": act_plus,
+            "accts_activated_plus_pct": round(act_plus / accts * 100, 1) if accts else 0,
+            "golive_ucs": ucs,
+            "ucs_with_skill_match": matched,
+            "ucs_matched_pct": round(matched / ucs * 100, 1) if ucs else 0,
         }
     except Exception as e:
-        return {"total_accounts": 0, "cc_accounts": 0, "pct": 0, "avg_users": 0, "requests": 0, "credits": 0, "error": str(e)}
+        return {"error": str(e)}
 
 
 def q_cortex_code_by_account(account_ids):
@@ -2550,7 +2770,16 @@ def build_risk_narrative(risk_data):
 # HTML ROW BUILDER
 # =============================================================================
 
-def build_use_case_row(uc, consumption, bronze_tb=None, si_usage=None, cc_by_account=None, row_type="standard"):
+def build_use_case_row(uc, consumption, bronze_tb=None, si_usage=None, cc_by_account=None, row_type="standard",
+                       skill_match=None):
+    """
+    Build one <tr> for a use case table.
+
+    skill_match: optional dict {"confidence","n_skills","sessions"} from
+    q_coco_skill_match_by_uc(). When supplied, a "CoCo Skill Match" line is added
+    inside col1 next to the ACV/run-rate metrics. Table shape stays 3 columns, so
+    callers need no header change. Blank confidence renders nothing.
+    """
     uc_id = safe_str(uc.get("USE_CASE_ID", ""))
     account_id = safe_str(uc.get("ACCOUNT_ID", ""))
     account_name = html_escape(uc.get("ACCOUNT_NAME", ""))
@@ -2604,6 +2833,20 @@ def build_use_case_row(uc, consumption, bronze_tb=None, si_usage=None, cc_by_acc
             cc_users = safe_float(cc_data.get("CC_USERS", 0) or 0)
             cc_credits = safe_float(cc_data.get("CC_CREDITS", 0) or 0)
             col1_lines.append(f'<br>\n    <span class="cc-metrics" style="color: #6f42c1; font-size: 0.85em;">CC CLI 90D: {cc_users:.1f} Avg Daily Users | {cc_credits:,.0f} Credits</span>')
+    # CoCo skill match — inline in col1 alongside the other per-account metrics.
+    if skill_match is not None:
+        _conf = safe_str(skill_match.get("confidence", ""))
+        if _conf:
+            _n = safe_int(skill_match.get("n_skills", 0))
+            _sess = safe_int(skill_match.get("sessions", 0))
+            _color = {"High": "#28a745", "Medium": "#ffc107", "Low": "#fd7e14",
+                      "None": "#999"}.get(_conf, "#999")
+            _detail = (f' ({_n} skill{"" if _n == 1 else "s"}, '
+                       f'{_sess:,} session{"" if _sess == 1 else "s"})') if _n else ""
+            col1_lines.append(
+                f'<br>\n    <span class="coco-skill" style="font-size: 0.85em;">CoCo Skill Match: '
+                f'<span style="color: {_color}; font-weight: 600;">{_conf}</span>{_detail}</span>'
+            )
     risk_line_html = ""
     if risk and risk.lower() not in ("none", "", "-"):
         risk_line_html = f'<div class="details-row"><span class="risk"><strong>Risk:</strong> {html_escape(risk)}</span></div>'
@@ -3290,7 +3533,10 @@ def _run_all_queries(gvp_name, selected_quarter):
         "velocity": q_deployment_velocity,
         "pipeline_detail": q_risk_adjusted_pipeline_detail,
         "pipeline_phases": q_current_pipeline_phases,
-        "cc_theater": q_cortex_code_theater_usage,
+        "coco_tiers": q_coco_theater_tiers,
+        "coco_movement": q_coco_tier_movement,
+        "coco_insights": q_coco_golive_insights,
+        "coco_skill_uc": q_coco_skill_match_by_uc,
         "theater_consumption": q_theater_consumption,
         "wins_qtd": q_wins_qtd,
         "last7_wins": q_last7_wins,
@@ -3352,7 +3598,10 @@ def _run_all_queries(gvp_name, selected_quarter):
     velocity = p1_results["velocity"]
     pipeline_detail = p1_results["pipeline_detail"]
     pipeline_phases = p1_results["pipeline_phases"]
-    cc_theater = p1_results["cc_theater"]
+    coco_tiers = p1_results["coco_tiers"]
+    coco_movement = p1_results["coco_movement"]
+    coco_insights = p1_results["coco_insights"]
+    coco_skill_uc = p1_results["coco_skill_uc"]
     theater_consumption = p1_results["theater_consumption"]
     wins_qtd = p1_results["wins_qtd"]
     last7_wins = p1_results["last7_wins"]
@@ -3457,7 +3706,9 @@ def _run_all_queries(gvp_name, selected_quarter):
         "regional_targets": regional_targets,
         "partner_sd": partner_sd, "uc_velocity": uc_velocity,
         "bronze_created": bronze_created, "si_created": si_created, "pipeline_movements": pipeline_movements,
-        "cc_theater": cc_theater, "cc_by_account": cc_by_account,
+        "coco_tiers": coco_tiers, "coco_movement": coco_movement,
+        "coco_insights": coco_insights, "coco_skill_uc": coco_skill_uc,
+        "cc_by_account": cc_by_account,
         "theater_consumption": theater_consumption,
         "wins_qtd": wins_qtd, "last7_wins": last7_wins,
         "wins_forecast": wins_forecast, "wins_open_pipeline": wins_open_pipeline,
@@ -3651,16 +3902,9 @@ def render_script_tab(data):
     deployed = data["deployed"]
     pipeline = data["pipeline"]
     risk_analysis = data["risk_analysis"]
-    play_summary = data["play_summary"]
-    play_detail = data["play_detail"]
-    play_risk = data["play_risk"]
     high_risk_ucs = data["high_risk_ucs"]
-    play_targets = data["play_targets"]
     partner_sd = data["partner_sd"]
     uc_velocity = data["uc_velocity"]
-    bronze_created = data["bronze_created"]
-    bronze_tb_total = data["bronze_tb_total"]
-    si_theater = data["si_theater"]
     pacing = data["pacing"]
     cfg = data["_config"]
     pm = data.get("pipeline_movements", {})
@@ -4033,70 +4277,6 @@ Our {fy_label} full-year forecast of <strong>{fmt_ci(fy_forecast)}</strong> repr
 <strong>{fmt_ci(total_good)}</strong> in good pipeline for <strong>{fmt_pi(good_coverage)}</strong> good coverage vs Most Likely.
 We are currently at <strong>{fmt_pi(deployed_pct_of_target)}</strong> of our go-live target.</p>
 {high_risk_table_html}
-<h3 style="color: #333; border-bottom: 2px solid #007bff; padding-bottom: 8px;">Sales Play Detail</h3>
-"""
-    _ps = play_summary
-    _empty_ps = {"acv": 0, "count": 0}
-
-    # Bronze
-    br_dep = _ps.get("bronze_deployed", _empty_ps)
-    br_open = _ps.get("bronze_open", _empty_ps)
-    bronze_gap = fmt_play_gap(play_targets, "bronze_deployed", br_dep["acv"], br_dep["count"])
-    bronze_target = fmt_play_target(play_targets, "bronze_deployed")
-    bronze_risk = build_risk_narrative(play_risk["bronze"])
-    br_created = bronze_created.get("created", 0)
-    br_create_target = bronze_created.get("target")
-    br_create_target_str = str(br_create_target) if br_create_target is not None else "N/A"
-    br_create_pct = f"{br_created / br_create_target * 100:.0f}%" if br_create_target else "N/A"
-    script_html += f"""
-<h4 style="color: #555;">Bronze (Make Your Data AI Ready)</h4>
-<p>Bronze has deployed <strong>{fmt_ci(br_dep["acv"])}</strong> ({br_dep["count"]} UCs) QTD
-with <strong>{fmt_ci(br_open["acv"])}</strong> ({br_open["count"]} UCs) in open pipeline.
-Gap to deployed target: <strong>{bronze_gap}</strong>.
-We have created <strong>{br_created}</strong> Bronze use cases this quarter against a creation target of <strong>{br_create_target_str}</strong> ({br_create_pct}).
-QTD TB Ingested: <strong>{bronze_tb_total:.1f} TB</strong>.
-Regional coverage: <strong>{play_detail["bronze"]["regions"]}</strong> of 8 {_theater()} regions contributing.</p>
-<div class="risk-box">
-<strong>Risk Summary ({bronze_risk["at_risk"]} of {bronze_risk["total"]} use cases, {fmt_ci(bronze_risk["acv_at_risk"])} ACV at risk):</strong><br>
-{bronze_risk["narrative_html"]}
-</div>
-"""
-
-    # Snowflake Intelligence
-    si_dep = _ps.get("si_deployed", _empty_ps)
-    si_open = _ps.get("si_open", _empty_ps)
-    si_gap = fmt_play_gap(play_targets, "si_deployed", si_dep["acv"], si_dep["count"])
-    si_target_str = fmt_play_target(play_targets, "si_deployed")
-    si_risk = build_risk_narrative(play_risk["si"])
-    script_html += f"""
-<h4 style="color: #555;">Snowflake Intelligence (AI: Snowflake Intelligence &amp; Agents)</h4>
-<p>SI has deployed <strong>{fmt_ci(si_dep["acv"])}</strong> ({si_dep["count"]} UCs) QTD
-with <strong>{fmt_ci(si_open["acv"])}</strong> ({si_open["count"]} UCs) in open pipeline.
-Deployed target: <strong>{si_target_str}</strong>. Gap to target: <strong>{si_gap}</strong>.
-Regional coverage: <strong>{play_detail["si"]["regions"]}</strong> of 8 {_theater()} regions contributing.</p>
-<p>Theater SI Usage (Last 30 Days): {si_theater["accounts"]:,} Accounts | {si_theater["users"]:,} Users | {si_theater["credits"]:,} Credits | {fmt_ci(si_theater["revenue"])} Revenue.</p>
-<div class="risk-box">
-<strong>Risk Summary ({si_risk["at_risk"]} of {si_risk["total"]} use cases, {fmt_ci(si_risk["acv_at_risk"])} ACV at risk):</strong><br>
-{si_risk["narrative_html"]}
-</div>
-"""
-
-    # SQL Server Migration
-    sql_dep = _ps.get("sqlserver_deployed", _empty_ps)
-    sql_open = _ps.get("sqlserver_open", _empty_ps)
-    sql_gap = fmt_play_gap(play_targets, "sqlserver_deployed", sql_dep["acv"], sql_dep["count"])
-    sqlserver_target = fmt_play_target(play_targets, "sqlserver_deployed")
-    sql_risk = build_risk_narrative(play_risk["sqlserver"])
-    script_html += f"""
-<h4 style="color: #555;">SQL Server Migration (Modernize Your Data Estate)</h4>
-<p>SQL Server has deployed <strong>{fmt_ci(sql_dep["acv"])}</strong> ({sql_dep["count"]} UCs) QTD
-with <strong>{fmt_ci(sql_open["acv"])}</strong> ({sql_open["count"]} UCs) in open pipeline.
-Deployed target: <strong>{sqlserver_target}</strong>. Gap to target: <strong>{sql_gap}</strong>.
-Regional coverage: <strong>{play_detail["sqlserver"]["regions"]}</strong> of 8 {_theater()} regions contributing.</p>
-<div class="risk-box">
-<strong>Risk Summary ({sql_risk["at_risk"]} of {sql_risk["total"]} use cases, {fmt_ci(sql_risk["acv_at_risk"])} ACV at risk):</strong><br>
-{sql_risk["narrative_html"]}
-</div>
 """
     script_html += f"""
 <h3 style="color: #333; border-bottom: 2px solid #007bff; padding-bottom: 8px;">Partner and SD Attach</h3>
@@ -4288,19 +4468,13 @@ def render_golives_tab(data):
     pipeline = data["pipeline"]
     risk_analysis = data["risk_analysis"]
     top5 = data["top5"]
-    play_summary = data["play_summary"]
-    play_detail = data["play_detail"]
-    play_use_cases = data["play_use_cases"]
-    play_risk = data["play_risk"]
     consumption = data["consumption"]
-    bronze_tb_total = data["bronze_tb_total"]
-    bronze_tb_acct = data["bronze_tb_acct"]
-    si_usage = data["si_usage"]
-    si_theater = data["si_theater"]
     pacing = data["pacing"]
-    play_targets = data["play_targets"]
     cfg = data["_config"]
-    cc_theater = data.get("cc_theater", {})
+    coco_tiers = data.get("coco_tiers", {})
+    coco_movement = data.get("coco_movement", {})
+    coco_insights = data.get("coco_insights", {})
+    coco_skill_uc = data.get("coco_skill_uc", {})
     cc_by_account = data.get("cc_by_account", {})
 
     quarter = safe_str(fiscal["FISCAL_QUARTER"])
@@ -4320,85 +4494,73 @@ def render_golives_tab(data):
     gl_open_pct = (pipeline["acv"] / gl_total_pipeline * 100) if gl_total_pipeline else 0
     total_good = sum(safe_float(r.get("GOOD_ACV", 0) or 0) for r in risk_analysis.values())
     good_coverage = ((total_good + deployed["acv"]) / most_likely * 100) if most_likely else 0
-    bronze_risk = build_risk_narrative(play_risk["bronze"])
-    si_risk = build_risk_narrative(play_risk["si"])
-    sql_risk = build_risk_narrative(play_risk["sqlserver"])
-    top5_rows = "\n".join(build_use_case_row(uc, consumption, cc_by_account=cc_by_account) for uc in top5)
-    bronze_rows = "\n".join(build_use_case_row(uc, consumption, bronze_tb=bronze_tb_acct, cc_by_account=cc_by_account, row_type="bronze") for uc in play_use_cases["bronze"][:3])
-    si_rows = "\n".join(build_use_case_row(uc, consumption, si_usage=si_usage, cc_by_account=cc_by_account, row_type="si") for uc in play_use_cases["si"][:3])
-    sql_rows = "\n".join(build_use_case_row(uc, consumption, cc_by_account=cc_by_account, row_type="standard") for uc in play_use_cases["sqlserver"][:3])
+    top5_rows = "\n".join(
+        build_use_case_row(uc, consumption, cc_by_account=cc_by_account,
+                           skill_match=coco_skill_uc.get(safe_str(uc.get("USE_CASE_ID", "")), {}))
+        for uc in top5
+    )
     day_avg = fmt_currency(pacing["day_avg"])
     day_pct = fmt_pct(pacing["day_pct"])
     week_avg = fmt_currency(pacing["week_avg"])
     week_pct = fmt_pct(pacing["week_pct"])
-    bronze_created = data.get("bronze_created", {})
-    si_created = data.get("si_created", 0)
-    bronze_tb_total = data["bronze_tb_total"]
-
-    # --- Sales Play Performance table data ---
-    _ps = play_summary
-    _pt = play_targets
-    _empty_ps = {"acv": 0, "count": 0}
-
-    def _sp_attainment(actual, target):
-        if target is None or target == 0:
-            return "&mdash;"
-        pct = actual / target * 100
-        color = "#28a745" if pct >= 100 else "#dc3545"
-        return f'<span style="color:{color}; font-weight:600;">{pct:.0f}%</span>'
-
-    def _sp_coverage(actual, pipeline_val, target):
-        if target is None or target == 0:
-            return "&mdash;"
-        pct = (actual + pipeline_val) / target * 100
-        color = "#28a745" if pct >= 100 else "#dc3545"
-        return f'<span style="color:{color}; font-weight:600;">{pct:.0f}%</span>'
-
-    # Row 1: Bronze - Use Cases Created
-    br_created_actual = bronze_created.get("created", 0)
-    br_created_target = _pt.get("bronze_created", {}).get("count")
-    br_created_target_str = f"{br_created_target:,}" if br_created_target is not None else "&mdash;"
-    br_created_att = _sp_attainment(br_created_actual, br_created_target)
-
-    # Row 2: Bronze - DCT TBs Ingested
-    br_tb_actual = bronze_tb_total
-    _tb_target_raw = data.get("tb_ingested_target")
-    br_tb_target = _tb_target_raw if isinstance(_tb_target_raw, (int, float)) else None
-    br_tb_target_str = f"{br_tb_target:,.0f} TB" if br_tb_target is not None else "&mdash;"
-    br_tb_att = _sp_attainment(br_tb_actual, br_tb_target)
-
-    # Row 3: SI - Use Cases Created
-    si_created_actual = si_created
-    si_created_target = _pt.get("si_created", {}).get("count")
-    si_created_target_str = f"{si_created_target:,}" if si_created_target is not None else "&mdash;"
-    si_created_att = _sp_attainment(si_created_actual, si_created_target)
-
-    # Row 4: SI - Use Cases Deployed
-    si_dep = _ps.get("si_deployed", _empty_ps)
-    si_open = _ps.get("si_open", _empty_ps)
-    si_dep_target = _pt.get("si_deployed", {}).get("count")
-    si_dep_target_str = f"{si_dep_target:,}" if si_dep_target is not None else "&mdash;"
-    si_dep_att = _sp_attainment(si_dep["count"], si_dep_target)
-    si_dep_pipeline = si_open["count"]
-    si_dep_coverage = _sp_coverage(si_dep["count"], si_dep_pipeline, si_dep_target)
-
-    # Row 5: SQL Server - Deployed EACV
-    sql_dep = _ps.get("sqlserver_deployed", _empty_ps)
-    sql_open = _ps.get("sqlserver_open", _empty_ps)
-    sql_dep_target = _pt.get("sqlserver_deployed", {}).get("acv")
-    sql_dep_target_str = fmt_currency(sql_dep_target) if sql_dep_target is not None else "&mdash;"
-    sql_dep_att = _sp_attainment(sql_dep["acv"], sql_dep_target)
-    sql_dep_pipeline = sql_open["acv"]
-    sql_dep_coverage = _sp_coverage(sql_dep["acv"], sql_dep_pipeline, sql_dep_target)
     fy_label = cfg.get("fiscal_year_label", "FY27")
     prior_fy_label = cfg.get("prior_fy_label", "FY26")
-    cc_accounts = cc_theater.get("cc_accounts", 0)
-    cc_total_accounts = cc_theater.get("total_accounts", 0)
-    cc_pct = cc_theater.get("pct", 0)
-    cc_avg_users = cc_theater.get("avg_users", 0)
-    cc_requests = cc_theater.get("requests", 0)
-    cc_credits = cc_theater.get("credits", 0)
-    cc_error = cc_theater.get("error", "")
+    # ---- CoCo Adoption (theater level) — replaces the old Cortex Code CLI Usage
+    # table, which read the CC_USAGE_CACHE that stopped refreshing 2026-07-26.
+    _ct = coco_tiers or {}
+    _cm = coco_movement or {}
+    _ci = coco_insights or {}
+    coco_error = safe_str(_ct.get("error", "")) or safe_str(_ci.get("error", ""))
+    coco_capacity = safe_int(_ct.get("capacity", 0))
+    coco_as_of = safe_str(_ct.get("as_of", ""))
+
+    _tier_colors = {"Zero Usage": "#dc3545", "Exploring": "#fd7e14",
+                    "Activated": "#007bff", "Expanded": "#17a2b8", "Deep": "#28a745"}
+    _tier_cells = []
+    for _tier in COCO_TIER_ORDER:
+        _n = safe_int(_ct.get(_tier, 0))
+        _pct = (_n / coco_capacity * 100) if coco_capacity else 0
+        _mv = _cm.get(_tier, {})
+        _in, _out = safe_int(_mv.get("in", 0)), safe_int(_mv.get("out", 0))
+        _net = _in - _out
+        _net_color = "#28a745" if _net > 0 else ("#dc3545" if _net < 0 else "#666")
+        # For Zero Usage a NEGATIVE net is good (accounts leaving zero usage).
+        if _tier == "Zero Usage":
+            _net_color = "#28a745" if _net < 0 else ("#dc3545" if _net > 0 else "#666")
+        _tier_cells.append(f"""
+  <td style="text-align:center;padding:10px 12px;border:1px solid #ddd;background:white;">
+    <div style="font-size:0.78em;font-weight:600;color:{_tier_colors[_tier]};text-transform:uppercase;letter-spacing:0.04em;">{_tier}</div>
+    <div style="font-size:1.7em;font-weight:bold;color:#1a1a2e;">{_n:,}</div>
+    <div style="font-size:0.78em;color:#666;">{_pct:.1f}% of book</div>
+    <div style="font-size:0.78em;margin-top:4px;">
+      <span style="color:#28a745;">&#9650;{_in}</span> &nbsp;
+      <span style="color:#dc3545;">&#9660;{_out}</span> &nbsp;
+      <span style="color:{_net_color};font-weight:600;">net {_net:+d}</span>
+    </div>
+  </td>""")
+    coco_tier_cells = "".join(_tier_cells)
+
+    _ss_now = safe_int(_ct.get("setsail_l28", 0))
+    _ss_prior = safe_int(_ct.get("setsail_prior", 0))
+    _ss_delta = _ss_now - _ss_prior
+    coco_setsail_html = (
+        f'<span><strong>CoCo Set Sail (L28):</strong> {_ss_now:,} accounts '
+        f'<span style="color:{"#28a745" if _ss_delta >= 0 else "#dc3545"};">'
+        f'({_ss_delta:+d} vs prior L28: {_ss_prior:,})</span></span>'
+    )
+
+    # Top-level insights for accounts with go-lives in the filtered quarter.
+    coco_insight_html = ""
+    if _ci and not _ci.get("error"):
+        coco_insight_html = f"""
+<div style="background:#f0f8ff;border-left:4px solid #29B5E8;border-radius:6px;padding:12px 16px;margin:10px 0 4px 0;font-size:0.92em;">
+  <p style="margin:0 0 6px 0;font-size:0.75em;font-weight:bold;color:#0b6d94;text-transform:uppercase;letter-spacing:0.05em;">CoCo in this quarter's go-live accounts</p>
+  <p style="margin:0;">Of the <strong>{_ci.get("golive_accounts", 0):,}</strong> accounts with go-lives in {quarter},
+  <strong>{_ci.get("accts_with_coco", 0):,}</strong> (<strong>{_ci.get("accts_with_coco_pct", 0)}%</strong>) have some CoCo usage and
+  <strong>{_ci.get("accts_activated_plus", 0):,}</strong> (<strong>{_ci.get("accts_activated_plus_pct", 0)}%</strong>) are Activated or better.
+  <strong>{_ci.get("ucs_with_skill_match", 0):,}</strong> of <strong>{_ci.get("golive_ucs", 0):,}</strong> go-live use cases
+  (<strong>{_ci.get("ucs_matched_pct", 0)}%</strong>) have a CoCo skill match.</p>
+</div>"""
 
     html_content = f"""
 <h3>Revenue &amp; Forecast</h3>
@@ -4470,54 +4632,24 @@ def render_golives_tab(data):
 </table>
 <p style="font-size: 0.85em; color: #666; margin-top: 5px;"><em>{prior_fy_label} Average Final: ${cfg["prior_fy_avg_final"]}M across 4 quarters | {fy_label} {quarter} Most Likely: {fmt_currency(most_likely)}</em></p>
 
-<h3>Cortex Code CLI Usage (Last 90 Days)</h3>
-{"<p style='color:red;'>CC Error: " + cc_error + "</p>" if cc_error else ""}
-<table class="forecast-table" style="width: 750px;">
-  <tr><th>Open Pipeline Accounts</th><th>Using CC CLI</th><th>Adoption %</th><th>Avg Daily Users / Acct</th><th>Requests (90D)</th><th>Credits (90D)</th></tr>
-  <tr><td>{cc_total_accounts}</td><td>{cc_accounts}</td><td>{cc_pct}%</td><td>{cc_avg_users}</td><td>{cc_requests:,}</td><td>{cc_credits:,.0f}</td></tr>
+<h3>CoCo Adoption &mdash; {_theater()} (Theater)</h3>
+{"<p style='color:red;'>CoCo Error: " + coco_error + "</p>" if coco_error else ""}
+<p style="font-size: 0.85em; color: #666; margin: 0 0 8px 0;">
+  {coco_capacity:,} capacity accounts &middot; tiers as of {coco_as_of} &middot;
+  &#9650;/&#9660; = accounts moved in / out over the last 7 days. &nbsp; {coco_setsail_html}
+</p>
+<table style="border-collapse: collapse; margin: 4px 0 6px 0;">
+  <tr>{coco_tier_cells}
+  </tr>
 </table>
+<p style="font-size: 0.78em; color: #888; margin: 0 0 4px 0;"><em>{COCO_TIER_DEFINITIONS}</em></p>
+{coco_insight_html}
 
 <h3>Top 5 Use Cases Going Live This Quarter</h3>
 <table class="use-case-table">
   <tr><th style="width:25%">Account / Use Case</th><th style="width:45%">Details</th><th style="width:30%">Summary</th></tr>
   {top5_rows}
 </table>
-
-<h3>Sales Play Performance</h3>
-<table class="sales-play-table">
-  <tr><th>Sales Play</th><th>Metric</th><th>Q1 Target</th><th>QTD Actual</th><th>Attainment</th><th>Pipeline</th><th>Coverage</th></tr>
-  <tr><td><strong>Make Your Data AI Ready</strong></td><td>Use Cases Created</td><td class="number">{br_created_target_str}</td><td class="number">{br_created_actual:,}</td><td class="number">{br_created_att}</td><td class="number">&mdash;</td><td class="number">&mdash;</td></tr>
-  <tr><td><strong>Make Your Data AI Ready</strong></td><td>DCT TBs Ingested</td><td class="number">{br_tb_target_str}</td><td class="number">{br_tb_actual:,.1f} TB</td><td class="number">{br_tb_att}</td><td class="number">&mdash;</td><td class="number">&mdash;</td></tr>
-  <tr><td><strong>Snowflake Intelligence</strong></td><td>Use Cases Created</td><td class="number">{si_created_target_str}</td><td class="number">{si_created_actual:,}</td><td class="number">{si_created_att}</td><td class="number">&mdash;</td><td class="number">&mdash;</td></tr>
-  <tr><td><strong>Snowflake Intelligence</strong></td><td>Use Cases Deployed</td><td class="number">{si_dep_target_str}</td><td class="number">{si_dep["count"]:,}</td><td class="number">{si_dep_att}</td><td class="number">{si_dep_pipeline:,}</td><td class="number">{si_dep_coverage}</td></tr>
-  <tr><td><strong>SQL Server Migration</strong></td><td>Deployed EACV</td><td class="number">{sql_dep_target_str}</td><td class="number">{fmt_currency(sql_dep["acv"])}</td><td class="number">{sql_dep_att}</td><td class="number">{fmt_currency(sql_dep_pipeline)}</td><td class="number">{sql_dep_coverage}</td></tr>
-</table>
-
-<div class="play-section">
-<h3>Bronze Ingest - Top 3 Use Cases</h3>
-<div class="analysis"><strong>QTD TB Ingested:</strong> {bronze_tb_total:.1f} TB<br>
-<strong>Average ACV:</strong> {fmt_currency(play_detail["bronze"]["avg_acv"])} | <strong>Median ACV:</strong> {fmt_currency(play_detail["bronze"]["median_acv"])} | across {play_detail["bronze"]["count"]} use cases.
-<strong>Regional Coverage:</strong> {play_detail["bronze"]["regions"]} of 8 {_theater()} regions contributing.</div>
-<div class="risk-box"><strong>Risk Summary ({bronze_risk["at_risk"]} of {bronze_risk["total"]} use cases, {fmt_currency(bronze_risk["acv_at_risk"])} ACV at risk):</strong><br>{bronze_risk["narrative_html"]}</div>
-<table class="use-case-table"><tr><th style="width:25%">Account / Use Case</th><th style="width:45%">Details</th><th style="width:30%">Summary</th></tr>{bronze_rows}</table>
-</div>
-
-<div class="play-section">
-<h3>Snowflake Intelligence - Top 3 Use Cases</h3>
-<div class="analysis"><strong>Theater SI Usage (Last 30 Days):</strong> {si_theater["accounts"]:,} Accounts | {si_theater["users"]:,} Users | {si_theater["credits"]:,} Credits | {fmt_currency(si_theater["revenue"])} Revenue<br>
-<strong>Average ACV:</strong> {fmt_currency(play_detail["si"]["avg_acv"])} | <strong>Median ACV:</strong> {fmt_currency(play_detail["si"]["median_acv"])} | across {play_detail["si"]["count"]} use cases.
-<strong>Regional Coverage:</strong> {play_detail["si"]["regions"]} of 8 {_theater()} regions contributing.</div>
-<div class="risk-box"><strong>Risk Summary ({si_risk["at_risk"]} of {si_risk["total"]} use cases, {fmt_currency(si_risk["acv_at_risk"])} ACV at risk):</strong><br>{si_risk["narrative_html"]}</div>
-<table class="use-case-table"><tr><th style="width:25%">Account / Use Case</th><th style="width:45%">Details</th><th style="width:30%">Summary</th></tr>{si_rows}</table>
-</div>
-
-<div class="play-section">
-<h3>SQL Server Migration - Top 3 Use Cases</h3>
-<div class="analysis"><strong>Average ACV:</strong> {fmt_currency(play_detail["sqlserver"]["avg_acv"])} | <strong>Median ACV:</strong> {fmt_currency(play_detail["sqlserver"]["median_acv"])} | across {play_detail["sqlserver"]["count"]} use cases.
-<strong>Regional Coverage:</strong> {play_detail["sqlserver"]["regions"]} of 8 {_theater()} regions contributing.</div>
-<div class="risk-box"><strong>Risk Summary ({sql_risk["at_risk"]} of {sql_risk["total"]} use cases, {fmt_currency(sql_risk["acv_at_risk"])} ACV at risk):</strong><br>{sql_risk["narrative_html"]}</div>
-<table class="use-case-table"><tr><th style="width:25%">Account / Use Case</th><th style="width:45%">Details</th><th style="width:30%">Summary</th></tr>{sql_rows}</table>
-</div>
 """
     st.html(STREAMLIT_CSS + html_content)
 
@@ -4769,7 +4901,6 @@ def main():
             help="Select fiscal quarter. Current quarter is the default.",
         )
         selected_quarter = all_quarters[quarter_labels.index(selected_quarter_label)]
-        play_labels = list(PLAY_OPTIONS.keys())
         st.markdown("---")
         cache_key = f"peak_data_{selected_gvp}_{selected_quarter_label}"
         cached = st.session_state.get(cache_key)
