@@ -313,6 +313,30 @@ def extract_latest_comment(text):
     return latest
 
 
+def extract_recent_comments(text, n=3):
+    """
+    Return the n most recent dated comment blocks, newest first, as a list.
+
+    SE_COMMENTS fields run to 4,000+ characters of dated history. extract_latest_comment()
+    keeps only the newest block, which discards most of the narrative. This keeps the
+    newest n so the summary carries real context without dumping the whole log.
+    Falls back to the entire string when no date headers are detected.
+    """
+    s = safe_str(text).strip()
+    if not s:
+        return []
+    matches = list(_DATE_LINE_RE.finditer(s))
+    if len(matches) <= 1:
+        return [s]
+    blocks = []
+    for i, m in enumerate(matches[:n]):
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(s)
+        block = s[m.start():end].strip()
+        if block:
+            blocks.append(block)
+    return blocks
+
+
 def update_risk_thresholds_from_velocity(velocity):
     tw = velocity.get("time_to_tw")
     imp = velocity.get("tw_to_imp_start")
@@ -1487,6 +1511,61 @@ def q_coco_golive_insights():
         }
     except Exception as e:
         return {"error": str(e)}
+
+
+def q_use_case_story():
+    """
+    Curated Problem / Solution / Impact narrative per use case, for the Summary column.
+
+    Source: SALES.RAVEN.USE_CASE_QUALITY_STORIES. This is a STRONG match — it joins
+    on a direct use-case key at use-case grain (one row per use case), not at account
+    level, so a record cannot be misattributed to a sibling use case at the same account.
+
+    KEY TRAP: join on the MDM `u.USE_CASE_ID`, NOT `RESOLVED_USE_CASE_ID`. Measured on
+    the FY27-Q3 cohort: USE_CASE_ID matches 414/702 (59%), RESOLVED matches only 197
+    (28%). This is the OPPOSITE of SALES.ACTIVITY.* tables, which key on RESOLVED.
+    Neither errors on the wrong key — you just silently get fewer rows.
+
+    Rejected alternatives (verified 2026-09-21, do not retry):
+      - SALES.RAVEN.ALL_ENGAGEMENTS_PREPED — richest narrative but ACCOUNT-level only,
+        no use-case key. Matches 99.3% of use cases, so it carries no signal about
+        WHICH use case, and it is stale (max ACTIVITY_DATE 2025-11-10).
+      - SALES.ACTIVITY.USECASE_FIELD_ACTIVITY_AGG — use-case grain, but it is SFDC
+        field-change history: the long-text comment fields are 100% NULL, and it
+        stopped updating 2026-04-06. 83.5% of its content just restates
+        USE_CASE_DESCRIPTION.
+
+    Content is refreshed by LAST_LOAD_DATE (2026-08-12 at time of writing), so it
+    lags live SE comments — the renderer stamps the as-of date for that reason.
+    """
+    excluded = ", ".join(f"'{s}'" for s in CONFIG["dim_excluded_stages"])
+    try:
+        rows = run_query(f"""
+            WITH coh AS (
+              SELECT u.USE_CASE_ID AS MDM_ID, u.RESOLVED_USE_CASE_ID AS RID
+              FROM SNOWPUBLIC.STREAMLIT.DIM_USE_CASE_MDM_CACHE u
+              WHERE {_gvp_filter('u')}
+                AND u.USE_CASE_EACV > 0 AND u.IS_DEPLOYED = FALSE AND u.IS_LOST = FALSE
+                AND u.GO_LIVE_DATE BETWEEN '{CONFIG["quarter_start"]}' AND '{CONFIG["quarter_end"]}'
+                AND u.USE_CASE_STAGE NOT IN ({excluded})
+            )
+            SELECT c.RID AS LOOKUP_KEY,
+                   q.PROBLEM_CHALLENGE, q.SNOWFLAKE_SOLUTION, q.RESULT_OF_IMPACT,
+                   q.LAST_LOAD_DATE
+            FROM SALES.RAVEN.USE_CASE_QUALITY_STORIES q
+            JOIN coh c ON c.MDM_ID = q.USE_CASE_ID
+            WHERE q.PROBLEM_CHALLENGE IS NOT NULL
+               OR q.SNOWFLAKE_SOLUTION IS NOT NULL
+               OR q.RESULT_OF_IMPACT IS NOT NULL
+        """)
+        return {safe_str(r.get("LOOKUP_KEY", "")): {
+                    "problem": safe_str(r.get("PROBLEM_CHALLENGE", "")),
+                    "solution": safe_str(r.get("SNOWFLAKE_SOLUTION", "")),
+                    "impact": safe_str(r.get("RESULT_OF_IMPACT", "")),
+                    "as_of": safe_str(r.get("LAST_LOAD_DATE", "")),
+                } for r in rows}
+    except Exception:
+        return {}
 
 
 def q_cortex_code_by_account(account_ids):
@@ -2771,7 +2850,7 @@ def build_risk_narrative(risk_data):
 # =============================================================================
 
 def build_use_case_row(uc, consumption, bronze_tb=None, si_usage=None, cc_by_account=None, row_type="standard",
-                       skill_match=None):
+                       skill_match=None, engagement=None):
     """
     Build one <tr> for a use case table.
 
@@ -2779,6 +2858,11 @@ def build_use_case_row(uc, consumption, bronze_tb=None, si_usage=None, cc_by_acc
     q_coco_skill_match_by_uc(). When supplied, a "CoCo Skill Match" line is added
     inside col1 next to the ACV/run-rate metrics. Table shape stays 3 columns, so
     callers need no header change. Blank confidence renders nothing.
+
+    engagement: optional list of short strings from the Raven engagement record,
+    appended to the Summary column. Pass ONLY records that are a verified strong
+    match to this specific use case — an account-level match is not sufficient,
+    since one account can carry many unrelated use cases.
     """
     uc_id = safe_str(uc.get("USE_CASE_ID", ""))
     account_id = safe_str(uc.get("ACCOUNT_ID", ""))
@@ -2795,7 +2879,10 @@ def build_use_case_row(uc, consumption, bronze_tb=None, si_usage=None, cc_by_acc
     risk = safe_str(uc.get("USE_CASE_RISK", ""))
     next_steps = html_escape(uc.get("NEXT_STEPS", ""))
     se_comments = html_escape(extract_latest_comment(uc.get("SE_COMMENTS", "")))
-    description = html_escape(truncate_text(uc.get("USE_CASE_DESCRIPTION", ""), 300))
+    # Summary column: full description, NOT truncated. The old 300-char cap was
+    # discarding up to 1,859 of 2,159 characters on real records.
+    _desc_raw = safe_str(uc.get("USE_CASE_DESCRIPTION", ""))
+    description = html_escape(_desc_raw)
     implementer = html_escape(uc.get("IMPLEMENTER", ""))
     partner = html_escape(uc.get("PARTNER_NAME", ""))
     sf_url = f'{CONFIG["salesforce_base_url"]}{uc_id}'
@@ -2858,9 +2945,79 @@ def build_use_case_row(uc, consumption, bronze_tb=None, si_usage=None, cc_by_acc
     <div class="next-steps"><strong>Next Steps:</strong> {next_steps}</div>
     <div class="se-comments"><strong>SE Comments:</strong> {se_comments}</div>"""
     partner_line = f'<div class="partner"><strong>Partner:</strong> {partner}</div>' if partner else ""
-    col3 = f"""{description}
+
+    # ---- Summary column: layered context, nothing truncated away ----
+    # Description in full, then the recent SE comment history (the newest entry is
+    # already in col2, so this adds the ones behind it), then the complete raw log
+    # inside <details> so long records are collapsed rather than cut off.
+    _desc_block = (f'<div class="uc-desc">{description}</div>' if description
+                   else '<div class="uc-desc" style="color:#999;"><em>No description recorded.</em></div>')
+
+    _blocks = extract_recent_comments(uc.get("SE_COMMENTS", ""), n=4)
+    _earlier = _blocks[1:] if len(_blocks) > 1 else []
+    _earlier_html = ""
+    if _earlier:
+        _items = "".join(
+            f'<div style="margin:3px 0; padding-left:8px; border-left:2px solid #dee2e6;">{html_escape(b)}</div>'
+            for b in _earlier
+        )
+        _earlier_html = (
+            '<div style="margin-top:8px; font-size:0.9em;">'
+            '<strong style="color:#555;">Earlier SE activity:</strong>'
+            f'{_items}</div>'
+        )
+
+    # Full untrimmed source text, collapsed. Guarantees nothing is lost from view.
+    _full_se = safe_str(uc.get("SE_COMMENTS", ""))
+    _full_next = safe_str(uc.get("NEXT_STEPS", ""))
+    _full_parts = []
+    if _full_next:
+        _full_parts.append(f'<strong>Next Steps (full):</strong><br>{html_escape(_full_next)}')
+    if _full_se:
+        _full_parts.append(f'<strong>SE Comments (full history):</strong><br>{html_escape(_full_se)}')
+    _details_html = ""
+    if _full_parts:
+        _joined = '<br><br>'.join(_full_parts).replace("\n", "<br>")
+        _details_html = (
+            '<details style="margin-top:8px;">'
+            '<summary style="cursor:pointer; color:#0b6d94; font-size:0.85em; font-weight:600;">'
+            'Full notes &amp; comment history</summary>'
+            f'<div style="margin-top:6px; font-size:0.85em; color:#444; line-height:1.5; '
+            f'max-height:340px; overflow-y:auto; background:#fafbfc; padding:8px 10px; '
+            f'border-radius:4px;">{_joined}</div></details>'
+        )
+
+    # Curated use-case story — only present on a direct use-case-key match.
+    _eng_html = ""
+    if engagement:
+        _parts = []
+        for _lbl, _key in (("Problem", "problem"), ("Snowflake solution", "solution"),
+                           ("Expected impact", "impact")):
+            _v = safe_str(engagement.get(_key, "")).strip()
+            if _v:
+                _parts.append(
+                    f'<div style="margin:4px 0;"><strong style="color:#0b6d94;">{_lbl}:</strong> '
+                    f'{html_escape(_v)}</div>'
+                )
+        if _parts:
+            _as_of = safe_str(engagement.get("as_of", ""))
+            _stamp = (f' <span style="color:#888; font-weight:400; font-size:0.9em;">'
+                      f'(as of {_as_of})</span>') if _as_of else ""
+            _eng_html = (
+                '<div style="margin:0 0 10px 0; padding:8px 10px; background:#f0f8ff; '
+                'border-left:3px solid #29B5E8; border-radius:4px; font-size:0.88em; line-height:1.5;">'
+                f'<div style="font-size:0.8em; font-weight:700; color:#0b6d94; '
+                f'text-transform:uppercase; letter-spacing:0.04em; margin-bottom:2px;">'
+                f'Use case story{_stamp}</div>'
+                f'{"".join(_parts)}</div>'
+            )
+
+    col3 = f"""{_eng_html}
+    {_desc_block}
+    {_earlier_html}
     <div class="implementer"><strong>Implementer:</strong> {implementer if implementer else 'None'}</div>
-    {partner_line}"""
+    {partner_line}
+    {_details_html}"""
     return f"""<tr>
   <td>{''.join(col1_lines)}</td>
   <td class="details-col">{col2}</td>
@@ -3537,6 +3694,7 @@ def _run_all_queries(gvp_name, selected_quarter):
         "coco_movement": q_coco_tier_movement,
         "coco_insights": q_coco_golive_insights,
         "coco_skill_uc": q_coco_skill_match_by_uc,
+        "uc_story": q_use_case_story,
         "theater_consumption": q_theater_consumption,
         "wins_qtd": q_wins_qtd,
         "last7_wins": q_last7_wins,
@@ -3602,6 +3760,7 @@ def _run_all_queries(gvp_name, selected_quarter):
     coco_movement = p1_results["coco_movement"]
     coco_insights = p1_results["coco_insights"]
     coco_skill_uc = p1_results["coco_skill_uc"]
+    uc_story = p1_results["uc_story"]
     theater_consumption = p1_results["theater_consumption"]
     wins_qtd = p1_results["wins_qtd"]
     last7_wins = p1_results["last7_wins"]
@@ -3708,6 +3867,7 @@ def _run_all_queries(gvp_name, selected_quarter):
         "bronze_created": bronze_created, "si_created": si_created, "pipeline_movements": pipeline_movements,
         "coco_tiers": coco_tiers, "coco_movement": coco_movement,
         "coco_insights": coco_insights, "coco_skill_uc": coco_skill_uc,
+        "uc_story": uc_story,
         "cc_by_account": cc_by_account,
         "theater_consumption": theater_consumption,
         "wins_qtd": wins_qtd, "last7_wins": last7_wins,
@@ -4475,6 +4635,7 @@ def render_golives_tab(data):
     coco_movement = data.get("coco_movement", {})
     coco_insights = data.get("coco_insights", {})
     coco_skill_uc = data.get("coco_skill_uc", {})
+    uc_story = data.get("uc_story", {})
     cc_by_account = data.get("cc_by_account", {})
 
     quarter = safe_str(fiscal["FISCAL_QUARTER"])
@@ -4496,7 +4657,8 @@ def render_golives_tab(data):
     good_coverage = ((total_good + deployed["acv"]) / most_likely * 100) if most_likely else 0
     top5_rows = "\n".join(
         build_use_case_row(uc, consumption, cc_by_account=cc_by_account,
-                           skill_match=coco_skill_uc.get(safe_str(uc.get("USE_CASE_ID", "")), {}))
+                           skill_match=coco_skill_uc.get(safe_str(uc.get("USE_CASE_ID", "")), {}),
+                           engagement=uc_story.get(safe_str(uc.get("USE_CASE_ID", ""))))
         for uc in top5
     )
     day_avg = fmt_currency(pacing["day_avg"])
@@ -4647,7 +4809,7 @@ def render_golives_tab(data):
 
 <h3>Top 5 Use Cases Going Live This Quarter</h3>
 <table class="use-case-table">
-  <tr><th style="width:25%">Account / Use Case</th><th style="width:45%">Details</th><th style="width:30%">Summary</th></tr>
+  <tr><th style="width:22%">Account / Use Case</th><th style="width:33%">Details</th><th style="width:45%">Summary</th></tr>
   {top5_rows}
 </table>
 """

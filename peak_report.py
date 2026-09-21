@@ -19,6 +19,14 @@ import sys
 from datetime import date, datetime
 from pathlib import Path
 
+# Sandboxed / automated interpreters do not reliably put the script's own
+# directory on sys.path, which makes `import peak_calibrate` fail and silently
+# degrade the report to hardcoded fallback rates. Prepend it ourselves so any
+# caller — cron, agent task, sandbox, another cwd — resolves the sibling module.
+_SCRIPT_DIR = str(Path(__file__).resolve().parent)
+if _SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, _SCRIPT_DIR)
+
 import snowflake.connector
 
 # ─────────────────────────── Configuration ───────────────────────────────────
@@ -74,7 +82,16 @@ QUARTERS = {
     },
 }
 
-_arg = (sys.argv[1].lower() if len(sys.argv) > 1 else "q3")
+# Calibration is mandatory by default. If peak_calibrate cannot run, the report
+# would otherwise be built on the hardcoded QUARTERS rates measured at some
+# other horizon — which publishes wrong numbers with no visible marker. Pass
+# --allow-fallback-rates to proceed anyway; the report is then stamped so a
+# reader can see the model was not calibrated.
+ALLOW_FALLBACK = "--allow-fallback-rates" in sys.argv
+CALIBRATED = True   # set by main(); False means fallback rates were used
+_args = [a for a in sys.argv[1:] if not a.startswith("--")]
+
+_arg = (_args[0].lower() if _args else "q3")
 if _arg not in QUARTERS:
     sys.exit(f"Unknown quarter '{_arg}'. Use one of: {', '.join(QUARTERS)}")
 Q = QUARTERS[_arg]
@@ -1085,6 +1102,19 @@ def generate_html(regions, targets, yoy_total, districts, wins_data,
 
 <h1>{QLABEL} Forecast Analysis <span class="badge">AMSExpansion</span></h1>
 <p class="subtitle">As of {today_str} &mdash; {days_label} ({QS.strftime("%b %-d, %Y")} &ndash; {QE.strftime("%b %-d, %Y")}) &mdash; Mark Fleming GVP</p>
+{"" if CALIBRATED else '''
+<div style="background:#fff3cd; border:2px solid #dc3545; border-radius:6px; padding:14px 18px; margin:12px 0;">
+  <div style="color:#b3261e; font-weight:700; font-size:1.05em; margin-bottom:4px;">
+    &#9888; UNCALIBRATED &mdash; fallback conversion rates
+  </div>
+  <div style="color:#3c4653; font-size:0.9em; line-height:1.5;">
+    peak_calibrate.py did not run for this report, so M3 conversion rates and M2 pacing
+    are the hardcoded values measured at a <strong>different time horizon</strong>, not at
+    this run&rsquo;s horizon. Forecast figures below (Commit / Most Likely / Stretch) are
+    unreliable and must not be quoted. Re-run without --allow-fallback-rates once the
+    calibration failure is fixed.
+  </div>
+</div>'''}
 
 <!-- Summary Banner -->
 <div class="summary-banner">
@@ -1660,7 +1690,18 @@ def main():
     conn = get_conn()
 
     print("Recalibrating rates at current horizon …")
-    apply_calibration(conn)
+    global CALIBRATED
+    CALIBRATED = apply_calibration(conn)
+    if not CALIBRATED:
+        if not ALLOW_FALLBACK:
+            sys.exit(
+                "\nABORTED: calibration did not run, so the report would use the hardcoded\n"
+                "QUARTERS rates measured at a different horizon. Publishing that silently is\n"
+                "how this report drifted out of correctness before.\n"
+                "Fix the cause (usually peak_calibrate.py not importable, or a query failure\n"
+                "above), or re-run with --allow-fallback-rates to publish a stamped report."
+            )
+        print("  ! PROCEEDING ON FALLBACK RATES — report will be stamped UNCALIBRATED")
 
     horizon = (f"day {DAY_IN_QUARTER} of {QDAYS}, {DAYS_REMAINING} remaining"
                if IN_QUARTER else f"{DAYS_TO_OPEN} days before open")

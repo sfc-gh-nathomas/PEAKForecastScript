@@ -212,6 +212,94 @@ its own table column — the Top 5 table stays 3 columns.
 Verified after the fix: 5/5 top rows carry the line; 725 use cases scored;
 608/725 = 83.9% matched across 564 go-live accounts.
 
+## Calibration failure is now FATAL (fixed 2026-09-21)
+`apply_calibration()` used to return False on failure and the caller at the old
+line 1663 DISCARDED that return, so a failed calibration published a report built
+on the hardcoded `QUARTERS` fallback rates with no marker. That is a silent
+wrong-numbers publication. Measured cost on Q3 FY27 day 52: fallback rates gave
+ML $202.6M vs the calibrated $192.2M — a $10.4M overstatement.
+
+Now:
+- `main()` captures the result and `sys.exit(1)` with an explanatory message if
+  calibration did not run. Verified: exit code 1 on stderr, so automations catch it.
+- `--allow-fallback-rates` overrides the abort and stamps a red "UNCALIBRATED"
+  banner into the HTML naming the risk. Verified both paths.
+- `sys.path` now prepends the script's own directory (derived from `__file__`)
+  at import time. The sandbox/automation interpreter does NOT do this, which is
+  what made `import peak_calibrate` fail. Verified calibrating from a foreign cwd.
+
+## The automation runs the WORKSPACE copy, not your local file
+The refresh task fetches both scripts from `TEMP.NATHOMAS.SHARED_REPORTS:/peak/`.
+Editing `peak_report.py` locally does NOTHING for the automation until you upload
+it. On 2026-09-21 the workspace copy was still the Sep 9 version (94,416 bytes)
+while local was 96,804 — so the two fixes above would never have reached the
+scheduled run. ALWAYS upload after changing either script:
+
+```bash
+cortex ws cp peak_report.py TEMP.NATHOMAS.SHARED_REPORTS:/peak/
+```
+
+`SHARED_REPORTS` is a SHARED workspace: uploads land in `live` and are invisible
+to other users until you publish. Follow every upload with:
+```sql
+ALTER WORKSPACE TEMP.NATHOMAS.SHARED_REPORTS COMMIT;
+```
+(Published as `version$13` on 2026-09-21 with the fixed script, both region CSVs,
+and refreshed Q3/Q4 HTML.)
+
+## RSS blocks the automation's workspace writes — STILL OPEN
+The agent task runs under `USER$NATHOMAS.RSS.PEAK_REPORT_REFRESH`, which denies
+WRITE on `WORKSPACE TEMP.NATHOMAS.SHARED_REPORTS`. That is why the 2026-09-21 run
+could publish the report artifacts but could NOT upload the CSVs or refresh the
+workspace HTML copies. An interactive session is unaffected — the uploads above
+were done manually. Until the scope grants WRITE, every scheduled run will leave
+the workspace copies stale. Update the scope via `/guardrails` (CoCo panel).
+
+## Summary column context (2026-09-21)
+The Summary column of the Top 5 table now carries: full `USE_CASE_DESCRIPTION`
+(the old 300-char cap was discarding up to 1,859 of 2,159 chars on real records),
+the 3 SE comment entries BEHIND the newest one (`extract_recent_comments()`, since
+`extract_latest_comment()` shows only the newest of a 4,000+ char history), a
+curated use-case story, and a `<details>` block holding the complete raw
+`NEXT_STEPS` + `SE_COMMENTS`. Nothing is truncated — long text is collapsed
+instead of cut. Column widths rebalanced to 22/33/45.
+
+### The use-case story source, and what was rejected
+`SALES.RAVEN.USE_CASE_QUALITY_STORIES` — `PROBLEM_CHALLENGE`, `SNOWFLAKE_SOLUTION`,
+`RESULT_OF_IMPACT`. Use-case grain with a direct use-case key, so it is a genuine
+STRONG match, 100% populated, 414/702 (59%) FY27-Q3 coverage, `LAST_LOAD_DATE`
+2026-08-12. Content verified distinct from `USE_CASE_DESCRIPTION`, not a restatement.
+The renderer stamps the as-of date because it lags live SE comments.
+
+Rejected after measurement — do NOT retry either:
+- `SALES.RAVEN.ALL_ENGAGEMENTS_PREPED` (2.8M rows) is the real engagement record
+  and has the best narrative (`TAKEAWAYS`, `RAW_CONTENT`), but it is ACCOUNT-level
+  with NO use-case key. It matches 99.3% of use cases, so it cannot say WHICH use
+  case, and it is stale (max `ACTIVITY_DATE` 2025-11-10). A name-in-subject
+  heuristic fires on only 1.7% of use cases.
+- `SALES.ACTIVITY.USECASE_FIELD_ACTIVITY_AGG` has a use-case key but is SFDC
+  field-change history: `Use_Case_Comments__c` / `Implementation_Comments__c` /
+  `Specialist_Comments__c` are 100% NULL, it froze 2026-04-06, and 83.5% of its
+  text just restates `USE_CASE_DESCRIPTION`.
+
+### THIRD instance of the use-case ID trap — read this before joining anything
+There are TWO use-case ids and the correct one DEPENDS ON THE TABLE. Every row dict
+from `_use_case_select_cols()` is keyed on RESOLVED (it aliases
+`u.RESOLVED_USE_CASE_ID AS USE_CASE_ID`), so any lookup map consumed by
+`build_use_case_row()` must ALSO be keyed on RESOLVED — but the join to the source
+table may need the other one:
+
+| Source table | JOIN on | Measured |
+|---|---|---|
+| `CORTEX_CODE_SKILL_ACCT_CACHE` (via workloads) | RESOLVED | — |
+| `SALES.RAVEN.USE_CASE_QUALITY_STORIES` | **MDM `USE_CASE_ID`** | 414/702 vs 197/702 on RESOLVED |
+| `SALES.ACTIVITY.USECASE_FIELD_*` | RESOLVED | 528/1498 vs 0/1498 on MDM id |
+| `DIM_USE_CASE_HISTORY_DS_VW` (old snapshots) | **`USE_CASE_ID`** | RESOLVED is NULL on 64,272/64,280 rows |
+
+So `q_use_case_story()` joins on MDM `USE_CASE_ID` and returns the map keyed on
+RESOLVED. Getting this wrong NEVER errors — you silently get fewer rows or none.
+It cost three separate debugging rounds; always verify match counts after a join.
+
 ## Forecast methods
 M1 Pipeline Risk, M2 Historical Pacing, M3 Stage Conversion,
 M4 Weighted Ensemble (inverse error weighting).
