@@ -16,7 +16,11 @@ import snowflake.connector
 CONNECTION_NAME = "MyConnection"
 ROLE            = "SALES_RAVEN_RO_RL"
 WAREHOUSE       = "SNOWADHOC"
-GVP             = "Mark Fleming"
+# Scope on THEATER, not a GVP name: in 2026-09 AMSExpansion's GVP was renamed
+# "(TBH)  AMSExpansion GVP" and ACCOUNT_GVP went NULL in MDM, so the old
+# 'Mark Fleming' filter matched nothing. THEATER_NAME is a verified superset of
+# the old scope in every history snapshot. See CORTEX.md "Scope is THEATER".
+THEATER         = "AMSExpansion"
 REGIONS         = ("NorthwestExp_SR", "SouthwestExp_SR")
 Q3_START        = date(2026, 8, 1)
 Q3_END          = date(2026, 10, 31)
@@ -112,7 +116,7 @@ def query_weekly_snapshots(conn):
         FROM SALES.SE_REPORTING.DIM_USE_CASE_HISTORY_DS h
         JOIN SNOWPUBLIC.STREAMLIT.DIM_USE_CASE_MDM_CACHE u
           ON h.USE_CASE_ID = u.USE_CASE_ID
-        WHERE h.ACCOUNT_GVP = '{GVP}'
+        WHERE h.THEATER_NAME = '{THEATER}'
           AND h.SUB_REGION_NAME IN ('{region_filter}')
           AND h.DS IN ({dates_sql})
           AND h.IS_DEPLOYED = FALSE AND COALESCE(h.IS_LOST, FALSE) = FALSE
@@ -134,7 +138,7 @@ def query_final_deployed(conn):
         sql = f"""
         SELECT ROUND(SUM(USE_CASE_EACV), 0) AS deployed
         FROM SNOWPUBLIC.STREAMLIT.DIM_USE_CASE_MDM_CACHE
-        WHERE ACCOUNT_GVP = '{GVP}'
+        WHERE THEATER_NAME = '{THEATER}'
           AND SUB_REGION_NAME IN ('{region_filter}')
           AND IS_DEPLOYED = TRUE AND USE_CASE_EACV > 0
           AND GO_LIVE_DATE BETWEEN '{qs}' AND '{qe}'
@@ -173,7 +177,7 @@ def query_current_pipeline(conn):
         ROUND(SUM(CASE WHEN STAGE_NUMBER=4 THEN USE_CASE_EACV ELSE 0 END), 0)    AS tw_total,
         ROUND(SUM(CASE WHEN STAGE_NUMBER IN (1,2,3) THEN USE_CASE_EACV ELSE 0 END), 0) AS pretw_total
     FROM MDM.MDM_INTERFACES.DIM_USE_CASE
-    WHERE ACCOUNT_GVP = '{GVP}'
+    WHERE THEATER_NAME = '{THEATER}'
       AND SUB_REGION_NAME IN ('{region_filter}')
       AND IS_DEPLOYED = FALSE AND IS_LOST = FALSE
       AND USE_CASE_EACV > 0 AND STAGE_NUMBER >= 1
@@ -205,7 +209,7 @@ def query_current_q3_weekly(conn):
                        THEN USE_CASE_EACV ELSE 0 END), 0) AS pretw_acv,
         ROUND(SUM(USE_CASE_EACV), 0) AS total_acv
     FROM SALES.SE_REPORTING.DIM_USE_CASE_HISTORY_DS
-    WHERE ACCOUNT_GVP = '{GVP}'
+    WHERE THEATER_NAME = '{THEATER}'
       AND SUB_REGION_NAME IN ('{region_filter}')
       AND DS IN ({dates_sql})
       AND IS_DEPLOYED = FALSE AND COALESCE(IS_LOST, FALSE) = FALSE
@@ -218,10 +222,10 @@ def query_current_q3_weekly(conn):
 
 
 def query_targets(conn):
-    sql = """
+    sql = f"""
     SELECT REGION, USE_CASE_GO_LIVE_TARGET_REGION AS target
     FROM SALES.REPORTING.PEAK_USE_CASE_TARGETS
-    WHERE GEO = 'AMSExpansion' AND FISCAL_QUARTER = '2027-Q3'
+    WHERE GEO = '{THEATER}' AND FISCAL_QUARTER = '2027-Q3'
       AND REGION IN ('NorthwestExp','SouthwestExp')
     """
     rows = run(conn, sql)
@@ -696,7 +700,7 @@ NorthwestExp (D. Kuvelis) &amp; SouthwestExp (A. Sadowski) &mdash; As of {today_
 </div>
 
 <p style="font-size:0.7em;color:#aaa;margin-top:16px;text-align:center;">
-  Generated {today_str} &bull; NorthwestExp + SouthwestExp &bull; AMSExpansion / Mark Fleming GVP &bull;
+  Generated {today_str} &bull; NorthwestExp + SouthwestExp &bull; {THEATER} &bull;
   Sources: MDM.MDM_INTERFACES.DIM_USE_CASE &bull; SALES.SE_REPORTING.DIM_USE_CASE_HISTORY_DS
 </p>
 

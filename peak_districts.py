@@ -16,7 +16,11 @@ import snowflake.connector
 CONNECTION_NAME = "MyConnection"
 ROLE            = "SALES_RAVEN_RO_RL"
 WAREHOUSE       = "SNOWADHOC"
-GVP             = "Mark Fleming"
+# Scope on THEATER, not a GVP name: in 2026-09 AMSExpansion's GVP was renamed
+# "(TBH)  AMSExpansion GVP" and ACCOUNT_GVP went NULL in MDM, so the old
+# 'Mark Fleming' filter matched nothing. THEATER_NAME is a verified superset of
+# the old scope in every history snapshot. See CORTEX.md "Scope is THEATER".
+THEATER         = "AMSExpansion"
 Q3_START        = date(2026, 8, 1)
 Q3_END          = date(2026, 10, 31)
 Q3_DAYS         = 91
@@ -68,7 +72,7 @@ def query_districts(conn):
         ROUND(SUM(CASE WHEN STAGE_NUMBER=4 AND DAYS_IN_STAGE > 104 THEN USE_CASE_EACV ELSE 0 END),0) AS stale_tw_acv,
         COUNT(CASE WHEN STAGE_NUMBER >= 4 AND (NEXT_STEPS IS NULL OR NEXT_STEPS = '') THEN 1 END) AS no_next_steps
     FROM MDM.MDM_INTERFACES.DIM_USE_CASE
-    WHERE ACCOUNT_GVP = '{GVP}'
+    WHERE THEATER_NAME = '{THEATER}'
       AND IS_DEPLOYED = FALSE AND IS_LOST = FALSE
       AND USE_CASE_EACV > 0 AND STAGE_NUMBER >= 1
       AND GO_LIVE_DATE BETWEEN '{Q3_START}' AND '{Q3_END}'
@@ -429,7 +433,7 @@ def generate_html(districts):
 </div>
 
 <p style="font-size:0.7em;color:#aaa;margin-top:16px;text-align:center;">
-  Generated {today_str} &bull; Source: MDM.MDM_INTERFACES.DIM_USE_CASE &bull; AMSExpansion / Mark Fleming GVP
+  Generated {today_str} &bull; Source: MDM.MDM_INTERFACES.DIM_USE_CASE &bull; {THEATER}
 </p>
 
 <script>

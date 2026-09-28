@@ -2,7 +2,7 @@
 """
 PEAK QC Script — Standalone HTML Generator
 Generates the same Script tab output as the PEAK QC Streamlit app.
-Hardcoded for Mark Fleming / AMSExpansion.
+Scoped on the AMSExpansion theater (GVP resolved at runtime).
 
 Usage:
     python peak_script_standalone.py
@@ -62,7 +62,11 @@ def run_query(sql, _retries=2, _delay=3):
 
 CONFIG = {
     "warehouse": "SNOWADHOC",
-    "gvp_name": "Mark Fleming",
+    # Scope is the THEATER. gvp_name is RESOLVED at runtime by _resolve_gvp():
+    # GVP names get renamed (AMSExpansion -> "(TBH)  AMSExpansion GVP", 2026-09),
+    # which silently zeroed every 'Mark Fleming' filter. See CORTEX.md.
+    "theater": "AMSExpansion",
+    "gvp_name": "",
     "gvp_function": "GVP",
     "play_threshold": 500000,
     "top_n": 5,
@@ -91,18 +95,22 @@ RISK_CATEGORIES = [
     "Access to the Customer", "Performance", "Consumption",
 ]
 
-GVP_THEATER_MAP = {
-    "Mark Fleming": "AMSExpansion",
-    "Jennifer Chronis": "USMajors",
-    "Jonathan Beaulier": "USPubSec",
-    "Keegan Riley": "AMSAcquisition",
-    "Jon Robertson": "APJ",
-    "Dayne Turbitt": "EMEA",
-}
-
-
 def _theater():
-    return GVP_THEATER_MAP.get(CONFIG["gvp_name"], CONFIG["gvp_name"])
+    return CONFIG["theater"]
+
+
+def _resolve_gvp(theater):
+    """Current GVP for a theater. Only MaxIQ (USER_NAME) and the SI usage agg are
+    keyed on a person; everything else scopes on theater directly."""
+    try:
+        rows = run_query(f"""
+            SELECT GVP FROM SALES.RAVEN.D_SALESFORCE_ACCOUNT_CUSTOMERS
+            WHERE GEO = '{theater}' AND GVP IS NOT NULL
+            GROUP BY GVP ORDER BY COUNT(*) DESC LIMIT 1
+        """)
+        return safe_str(rows[0].get("GVP", "")) if rows else ""
+    except Exception:
+        return ""
 
 
 # =============================================================================
@@ -511,7 +519,7 @@ def q_fiscal_calendar(selected_quarter):
                 SELECT COALESCE(SUM(u.USE_CASE_ACV), 0) as DEPLOYED_ACV
                 FROM {CONFIG["raven_uc_table"]} u
                 JOIN {CONFIG["raven_acct_table"]} a ON u.VH_ACCOUNT_C = a.SALESFORCE_ACCOUNT_ID
-                WHERE a.GVP = '{CONFIG["gvp_name"]}'
+                WHERE a.GEO = '{_theater()}'
                   AND u.USE_CASE_ACV > 0 AND u.IS_WENT_LIVE = TRUE
                   AND u.DEFAULT_DATE BETWEEN '{qs}' AND '{qe}'
             """)
@@ -563,7 +571,7 @@ def q_deployed_qtd():
         SELECT SUM(u.USE_CASE_ACV) as DEPLOYED_ACV, COUNT(*) as DEPLOYED_COUNT
         FROM {CONFIG["raven_uc_table"]} u
         JOIN {CONFIG["raven_acct_table"]} a ON u.VH_ACCOUNT_C = a.SALESFORCE_ACCOUNT_ID
-        WHERE a.GVP = '{CONFIG["gvp_name"]}'
+        WHERE a.GEO = '{_theater()}'
           AND u.USE_CASE_ACV > 0
           AND u.IS_WENT_LIVE = TRUE
           AND u.DEFAULT_DATE BETWEEN '{CONFIG["quarter_start"]}' AND '{CONFIG["quarter_end"]}'
@@ -578,7 +586,7 @@ def q_open_pipeline():
         SELECT SUM(u.USE_CASE_ACV) as OPEN_PIPELINE, COUNT(*) as OPEN_COUNT
         FROM {CONFIG["raven_uc_table"]} u
         JOIN {CONFIG["raven_acct_table"]} a ON u.VH_ACCOUNT_C = a.SALESFORCE_ACCOUNT_ID
-        WHERE a.GVP = '{CONFIG["gvp_name"]}'
+        WHERE a.GEO = '{_theater()}'
           AND u.USE_CASE_ACV > 0 AND u.IS_WENT_LIVE = FALSE AND u.IS_LOST = FALSE
           AND u.GO_LIVE_DATE BETWEEN '{CONFIG["quarter_start"]}' AND '{CONFIG["quarter_end"]}'
           AND u.USE_CASE_STAGE NOT IN ({excluded})
@@ -628,7 +636,7 @@ def q_pipeline_risk():
         CROSS JOIN fiscal_qtr f
         JOIN {CONFIG["raven_uc_table"]} r ON u.USE_CASE_ID = r.ID
         JOIN {CONFIG["raven_acct_table"]} a ON r.VH_ACCOUNT_C = a.SALESFORCE_ACCOUNT_ID
-        WHERE a.GVP = '{CONFIG["gvp_name"]}'
+        WHERE a.GEO = '{_theater()}'
             AND r.USE_CASE_ACV > 0 AND r.IS_WENT_LIVE = FALSE AND r.IS_LOST = FALSE
             AND u.STAGE_NUMBER BETWEEN 1 AND 6
             AND r.USE_CASE_STAGE NOT IN ({excluded})
@@ -653,7 +661,7 @@ def _play_summary_query(play_name, extra_join, filter_clause, is_deployed):
         FROM {CONFIG["raven_uc_table"]} u
         JOIN {CONFIG["raven_acct_table"]} a ON u.VH_ACCOUNT_C = a.SALESFORCE_ACCOUNT_ID
         {extra_join}
-        WHERE a.GVP = '{CONFIG["gvp_name"]}'
+        WHERE a.GEO = '{_theater()}'
           AND u.USE_CASE_ACV > 0 AND {deploy_filter} AND {date_filter}
           {stage_filter} AND {filter_clause}
     """)
@@ -689,7 +697,7 @@ def q_play_detail_metrics():
             FROM {CONFIG["raven_uc_table"]} u
             JOIN {CONFIG["raven_acct_table"]} a ON u.VH_ACCOUNT_C = a.SALESFORCE_ACCOUNT_ID
             {extra_join}
-            WHERE a.GVP = '{CONFIG["gvp_name"]}'
+            WHERE a.GEO = '{_theater()}'
               AND u.USE_CASE_ACV > 0 AND u.IS_WENT_LIVE = FALSE AND u.IS_LOST = FALSE
               AND u.GO_LIVE_DATE BETWEEN '{CONFIG["quarter_start"]}' AND '{CONFIG["quarter_end"]}'
               AND u.USE_CASE_STAGE NOT IN ({excluded}) AND {filter_clause}
@@ -710,7 +718,7 @@ def q_bronze_tb_total():
     rows = run_query(f"""
         SELECT SUM(TB_INGESTED) as BRONZE_TB
         FROM SALES.REPORTING.SALES_PROGRAMS_BRONZE_INGEST
-        WHERE GVP = '{CONFIG["gvp_name"]}'
+        WHERE GEO_NAME = '{_theater()}'
           AND IS_BRONZE = TRUE
           AND MONTH BETWEEN '{CONFIG["quarter_start"]}' AND '{CONFIG["quarter_end"]}'
     """)
@@ -726,7 +734,7 @@ def _play_risk_detail_query(play_name, extra_join, filter_clause):
         FROM {CONFIG["raven_uc_table"]} u
         JOIN {CONFIG["raven_acct_table"]} a ON u.VH_ACCOUNT_C = a.SALESFORCE_ACCOUNT_ID
         {extra_join}
-        WHERE a.GVP = '{CONFIG["gvp_name"]}'
+        WHERE a.GEO = '{_theater()}'
           AND u.USE_CASE_ACV > 0 AND u.IS_WENT_LIVE = FALSE AND u.IS_LOST = FALSE
           AND u.GO_LIVE_DATE BETWEEN '{CONFIG["quarter_start"]}' AND '{CONFIG["quarter_end"]}'
           AND u.USE_CASE_STAGE NOT IN ({excluded})
@@ -739,7 +747,7 @@ def _play_risk_detail_query(play_name, extra_join, filter_clause):
         FROM {CONFIG["raven_uc_table"]} u
         JOIN {CONFIG["raven_acct_table"]} a ON u.VH_ACCOUNT_C = a.SALESFORCE_ACCOUNT_ID
         {extra_join}
-        WHERE a.GVP = '{CONFIG["gvp_name"]}'
+        WHERE a.GEO = '{_theater()}'
           AND u.USE_CASE_ACV > 0 AND u.IS_WENT_LIVE = FALSE AND u.IS_LOST = FALSE
           AND u.GO_LIVE_DATE BETWEEN '{CONFIG["quarter_start"]}' AND '{CONFIG["quarter_end"]}'
           AND u.USE_CASE_STAGE NOT IN ({excluded}) AND {filter_clause}
@@ -771,7 +779,7 @@ def q_high_risk_use_cases():
                ) as RISK_SUMMARY
         FROM {CONFIG["raven_uc_table"]} u
         JOIN {CONFIG["raven_acct_table"]} a ON u.VH_ACCOUNT_C = a.SALESFORCE_ACCOUNT_ID
-        WHERE a.GVP = '{CONFIG["gvp_name"]}'
+        WHERE a.GEO = '{_theater()}'
           AND u.USE_CASE_ACV > 0 AND u.IS_WENT_LIVE = FALSE AND u.IS_LOST = FALSE
           AND u.GO_LIVE_DATE BETWEEN '{CONFIG["quarter_start"]}' AND '{CONFIG["quarter_end"]}'
           AND u.USE_CASE_STAGE NOT IN ({excluded})
@@ -820,7 +828,7 @@ def q_partner_sd_attach():
         SELECT u.IMPLEMENTER_C, COUNT(*) as CNT, SUM(u.USE_CASE_ACV) as ACV
         FROM {CONFIG["raven_uc_table"]} u
         JOIN {CONFIG["raven_acct_table"]} a ON u.VH_ACCOUNT_C = a.SALESFORCE_ACCOUNT_ID
-        WHERE a.GVP = '{CONFIG["gvp_name"]}'
+        WHERE a.GEO = '{_theater()}'
           AND u.USE_CASE_ACV > 0 AND u.IS_WENT_LIVE = FALSE AND u.IS_LOST = FALSE
           AND u.GO_LIVE_DATE BETWEEN '{CONFIG["quarter_start"]}' AND '{CONFIG["quarter_end"]}'
           AND u.USE_CASE_STAGE NOT IN ({excluded})
@@ -830,7 +838,7 @@ def q_partner_sd_attach():
         SELECT DISTINCT u.VH_ACCOUNT_C as ACCOUNT_ID, u.IMPLEMENTER_C
         FROM {CONFIG["raven_uc_table"]} u
         JOIN {CONFIG["raven_acct_table"]} a ON u.VH_ACCOUNT_C = a.SALESFORCE_ACCOUNT_ID
-        WHERE a.GVP = '{CONFIG["gvp_name"]}'
+        WHERE a.GEO = '{_theater()}'
           AND u.USE_CASE_ACV > 0 AND u.IS_WENT_LIVE = FALSE AND u.IS_LOST = FALSE
           AND u.GO_LIVE_DATE BETWEEN '{CONFIG["quarter_start"]}' AND '{CONFIG["quarter_end"]}'
           AND u.USE_CASE_STAGE NOT IN ({excluded})
@@ -899,7 +907,7 @@ def q_pipeline_movements():
     rows = run_query(f"""
         SELECT METRIC, CNT, ACV
         FROM SNOWPUBLIC.STREAMLIT.PIPELINE_MOVEMENTS_CACHE
-        WHERE ACCOUNT_GVP = '{gvp}'
+        WHERE THEATER_NAME = '{_theater()}'
     """)
     result = {}
     for r in rows:
@@ -918,7 +926,7 @@ def q_use_case_velocity():
     rows = run_query(f"""
         SELECT AVG_TW, AVG_TW_TO_IMP, AVG_IMP_TO_DEPLOYED
         FROM SNOWPUBLIC.STREAMLIT.VELOCITY_CACHE
-        WHERE ACCOUNT_GVP = '{gvp}' AND METRIC_TYPE = 'stage_transition'
+        WHERE THEATER_NAME = '{_theater()}' AND METRIC_TYPE = 'stage_transition'
     """)
     r = rows[0] if rows else {}
     return {
@@ -933,7 +941,7 @@ def q_bronze_created_qtd():
         SELECT COUNT(*) as CREATED_COUNT
         FROM {CONFIG["raven_uc_table"]} u
         JOIN {CONFIG["raven_acct_table"]} a ON u.VH_ACCOUNT_C = a.SALESFORCE_ACCOUNT_ID
-        WHERE a.GVP = '{CONFIG["gvp_name"]}'
+        WHERE a.GEO = '{_theater()}'
           AND u.TECHNICAL_CAMPAIGN_S_C ILIKE '{CONFIG["bronze_campaign"]}'
           AND u.CREATED_DATE BETWEEN '{CONFIG["quarter_start"]}' AND '{CONFIG["quarter_end"]}'
     """)
@@ -981,7 +989,7 @@ def q_prior_fy_pacing(day_number, week_number):
             SELECT COALESCE(SUM(u.USE_CASE_ACV), 0) as DEPLOYED_ACV
             FROM {CONFIG["raven_uc_table"]} u
             JOIN {CONFIG["raven_acct_table"]} a ON u.VH_ACCOUNT_C = a.SALESFORCE_ACCOUNT_ID
-            WHERE a.GVP = '{CONFIG["gvp_name"]}'
+            WHERE a.GEO = '{_theater()}'
               AND u.USE_CASE_ACV > 0 AND u.IS_WENT_LIVE = TRUE
               AND u.DEFAULT_DATE BETWEEN '{qstart}' AND DATEADD('day', {day_num}-1, '{qstart}')
         """)
@@ -989,7 +997,7 @@ def q_prior_fy_pacing(day_number, week_number):
             SELECT COALESCE(SUM(u.USE_CASE_ACV), 0) as DEPLOYED_ACV
             FROM {CONFIG["raven_uc_table"]} u
             JOIN {CONFIG["raven_acct_table"]} a ON u.VH_ACCOUNT_C = a.SALESFORCE_ACCOUNT_ID
-            WHERE a.GVP = '{CONFIG["gvp_name"]}'
+            WHERE a.GEO = '{_theater()}'
               AND u.USE_CASE_ACV > 0 AND u.IS_WENT_LIVE = TRUE
               AND u.DEFAULT_DATE BETWEEN '{qstart}' AND DATEADD('day', {week_days}-1, '{qstart}')
         """)
@@ -1014,6 +1022,7 @@ def q_prior_fy_pacing(day_number, week_number):
 
 def run_all_queries():
     selected_quarter = get_current_quarter()
+    CONFIG["gvp_name"] = _resolve_gvp(CONFIG["theater"])
     CONFIG["is_current_quarter"] = selected_quarter["is_current"]
     if selected_quarter["is_current"]:
         CONFIG["reference_date"] = "CURRENT_DATE()"

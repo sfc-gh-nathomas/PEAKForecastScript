@@ -1,7 +1,7 @@
 # PEAK Qualify & Commit Forecast
 
 Streamlit-in-Snowflake app: `SNOWPUBLIC.STREAMLIT.PEAK_QC_FORECAST`
-Main file: `peak_app_sis.py` (local variant: `peak_app.py`)
+Main file: `peak_app_sis.py` (also run locally; `peak_app.py` is dead — see below)
 
 ## Scripts in this project
 - `peak_report.py` — "PEAK QC Forecast — AMSExpansion (quarter-parameterized)".
@@ -56,9 +56,15 @@ Cache builders changed to group on THEATER_NAME, keeping ACCOUNT_GVP as MAX():
   `SALES_ENGINEER`, called daily 6am ET by task `REFRESH_PEAK_PIPELINE_CACHE`.
   Altered with the user's approval. Only consumers are this app, by column name.
 
-NOT YET REFACTORED (still hard-code Mark Fleming, so still broken):
-`peak_districts.py`, `peak_nw_sw_forecast.py`, `peak_script_standalone.py`,
-`peak_app.py`. Apply the same table above.
+Also refactored 2026-09-27 and run end to end: `peak_districts.py`,
+`peak_nw_sw_forecast.py`, `peak_script_standalone.py` (the last resolves the GVP
+at runtime for its MaxIQ and SI-agg queries, like the app).
+
+`peak_app.py` is NOT refactored and cannot run at all: 46 of its 47
+`from peak_report import ...` names were removed when peak_report.py was
+rewritten on 2026-09-10 (last touched at commit 99731ef). It is superseded —
+`peak_app_sis.py` runs locally via `streamlit run` and is the maintained app.
+Candidate for retirement rather than repair.
 
 ## Calibration rule — do not share rates across horizons
 An in-quarter report and an out-quarter report MUST NOT share conversion rates.
