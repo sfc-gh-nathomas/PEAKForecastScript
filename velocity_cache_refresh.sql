@@ -24,6 +24,11 @@
 -- over everything created since 2025-02-01).
 -- =====================================================================
 
+-- 2026-09-27: KEYED ON THEATER_NAME. ACCOUNT_GVP is now NULL in MDM for all of
+-- AMSExpansion (GVP renamed to "(TBH)  AMSExpansion GVP"), so grouping on it
+-- merged the theater into an anonymous NULL bucket. ACCOUNT_GVP is kept as
+-- MAX() for backward compatibility only; the app filters on THEATER_NAME.
+-- After running: re-GRANT SELECT to SALES_STREAMLIT_RL, NORMALYZEROLE, PUBLIC.
 CREATE OR REPLACE TABLE SNOWPUBLIC.STREAMLIT.VELOCITY_CACHE AS
 
     WITH fiscal AS (
@@ -72,7 +77,8 @@ CREATE OR REPLACE TABLE SNOWPUBLIC.STREAMLIT.VELOCITY_CACHE AS
     -- Metrics: Created->TW, TW->ImpStart, ImpStart->Deployed (only where both dates exist and >= 0)
     stage_velocity AS (
         SELECT 
-            d.ACCOUNT_GVP,
+            d.THEATER_NAME,
+            MAX(d.ACCOUNT_GVP) AS ACCOUNT_GVP,
             'stage_transition' AS METRIC_TYPE,
             'current' AS PERIOD,
             AVG(CASE WHEN d.TECHNICAL_WIN_DATE IS NOT NULL
@@ -91,13 +97,14 @@ CREATE OR REPLACE TABLE SNOWPUBLIC.STREAMLIT.VELOCITY_CACHE AS
         CROSS JOIN latest_ds l
         WHERE d.DS = l.MAX_DS
           AND d.CREATED_DATE >= '2025-02-01'
-        GROUP BY d.ACCOUNT_GVP
+        GROUP BY d.THEATER_NAME
     ),
 
     -- DEPLOYMENT VELOCITY: unchanged methodology
     deploy_current AS (
         SELECT 
-            d.ACCOUNT_GVP,
+            d.THEATER_NAME,
+            MAX(d.ACCOUNT_GVP) AS ACCOUNT_GVP,
             'deployment' AS METRIC_TYPE,
             'current' AS PERIOD,
             NULL AS AVG_TW, NULL AS AVG_TW_TO_IMP, NULL AS AVG_IMP_TO_DEPLOYED,
@@ -115,10 +122,10 @@ CREATE OR REPLACE TABLE SNOWPUBLIC.STREAMLIT.VELOCITY_CACHE AS
         WHERE d.DS = l.MAX_DS
           AND d.IS_DEPLOYED = TRUE AND d.USE_CASE_EACV > 0
           AND d.ACTUAL_USE_CASE_DEPLOYMENT_DATE BETWEEN f.FQ_START AND f.FQ_END
-        GROUP BY d.ACCOUNT_GVP
+        GROUP BY d.THEATER_NAME
     ),
     deploy_hist_q1 AS (
-        SELECT d.ACCOUNT_GVP, 'deployment' AS METRIC_TYPE, 'hist_q1' AS PERIOD,
+        SELECT d.THEATER_NAME, MAX(d.ACCOUNT_GVP) AS ACCOUNT_GVP, 'deployment' AS METRIC_TYPE, 'hist_q1' AS PERIOD,
                NULL AS AVG_TW, NULL AS AVG_TW_TO_IMP, NULL AS AVG_IMP_TO_DEPLOYED,
                SUM(CASE WHEN d.ACTUAL_USE_CASE_DEPLOYMENT_DATE > DATEADD('day', (SELECT DAY_NUMBER FROM day_num) - 8, pq.Q1S)
                          AND d.ACTUAL_USE_CASE_DEPLOYMENT_DATE <= DATEADD('day', (SELECT DAY_NUMBER FROM day_num) - 1, pq.Q1S)
@@ -133,10 +140,10 @@ CREATE OR REPLACE TABLE SNOWPUBLIC.STREAMLIT.VELOCITY_CACHE AS
         CROSS JOIN prior_quarters pq
         WHERE d.DS = DATEADD('day', (SELECT DAY_NUMBER FROM day_num) - 1, pq.Q1S)
           AND d.IS_DEPLOYED = TRUE AND d.USE_CASE_EACV > 0
-        GROUP BY d.ACCOUNT_GVP
+        GROUP BY d.THEATER_NAME
     ),
     deploy_hist_q2 AS (
-        SELECT d.ACCOUNT_GVP, 'deployment' AS METRIC_TYPE, 'hist_q2' AS PERIOD,
+        SELECT d.THEATER_NAME, MAX(d.ACCOUNT_GVP) AS ACCOUNT_GVP, 'deployment' AS METRIC_TYPE, 'hist_q2' AS PERIOD,
                NULL AS AVG_TW, NULL AS AVG_TW_TO_IMP, NULL AS AVG_IMP_TO_DEPLOYED,
                SUM(CASE WHEN d.ACTUAL_USE_CASE_DEPLOYMENT_DATE > DATEADD('day', (SELECT DAY_NUMBER FROM day_num) - 8, pq.Q2S)
                          AND d.ACTUAL_USE_CASE_DEPLOYMENT_DATE <= DATEADD('day', (SELECT DAY_NUMBER FROM day_num) - 1, pq.Q2S)
@@ -151,10 +158,10 @@ CREATE OR REPLACE TABLE SNOWPUBLIC.STREAMLIT.VELOCITY_CACHE AS
         CROSS JOIN prior_quarters pq
         WHERE d.DS = DATEADD('day', (SELECT DAY_NUMBER FROM day_num) - 1, pq.Q2S)
           AND d.IS_DEPLOYED = TRUE AND d.USE_CASE_EACV > 0
-        GROUP BY d.ACCOUNT_GVP
+        GROUP BY d.THEATER_NAME
     ),
     deploy_hist_q3 AS (
-        SELECT d.ACCOUNT_GVP, 'deployment' AS METRIC_TYPE, 'hist_q3' AS PERIOD,
+        SELECT d.THEATER_NAME, MAX(d.ACCOUNT_GVP) AS ACCOUNT_GVP, 'deployment' AS METRIC_TYPE, 'hist_q3' AS PERIOD,
                NULL AS AVG_TW, NULL AS AVG_TW_TO_IMP, NULL AS AVG_IMP_TO_DEPLOYED,
                SUM(CASE WHEN d.ACTUAL_USE_CASE_DEPLOYMENT_DATE > DATEADD('day', (SELECT DAY_NUMBER FROM day_num) - 8, pq.Q3S)
                          AND d.ACTUAL_USE_CASE_DEPLOYMENT_DATE <= DATEADD('day', (SELECT DAY_NUMBER FROM day_num) - 1, pq.Q3S)
@@ -169,10 +176,10 @@ CREATE OR REPLACE TABLE SNOWPUBLIC.STREAMLIT.VELOCITY_CACHE AS
         CROSS JOIN prior_quarters pq
         WHERE d.DS = DATEADD('day', (SELECT DAY_NUMBER FROM day_num) - 1, pq.Q3S)
           AND d.IS_DEPLOYED = TRUE AND d.USE_CASE_EACV > 0
-        GROUP BY d.ACCOUNT_GVP
+        GROUP BY d.THEATER_NAME
     ),
     deploy_hist_q4 AS (
-        SELECT d.ACCOUNT_GVP, 'deployment' AS METRIC_TYPE, 'hist_q4' AS PERIOD,
+        SELECT d.THEATER_NAME, MAX(d.ACCOUNT_GVP) AS ACCOUNT_GVP, 'deployment' AS METRIC_TYPE, 'hist_q4' AS PERIOD,
                NULL AS AVG_TW, NULL AS AVG_TW_TO_IMP, NULL AS AVG_IMP_TO_DEPLOYED,
                SUM(CASE WHEN d.ACTUAL_USE_CASE_DEPLOYMENT_DATE > DATEADD('day', (SELECT DAY_NUMBER FROM day_num) - 8, pq.Q4S)
                          AND d.ACTUAL_USE_CASE_DEPLOYMENT_DATE <= DATEADD('day', (SELECT DAY_NUMBER FROM day_num) - 1, pq.Q4S)
@@ -187,7 +194,7 @@ CREATE OR REPLACE TABLE SNOWPUBLIC.STREAMLIT.VELOCITY_CACHE AS
         CROSS JOIN prior_quarters pq
         WHERE d.DS = DATEADD('day', (SELECT DAY_NUMBER FROM day_num) - 1, pq.Q4S)
           AND d.IS_DEPLOYED = TRUE AND d.USE_CASE_EACV > 0
-        GROUP BY d.ACCOUNT_GVP
+        GROUP BY d.THEATER_NAME
     )
 
     SELECT * FROM stage_velocity

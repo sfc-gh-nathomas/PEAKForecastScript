@@ -33,8 +33,12 @@ import snowflake.connector
 CONNECTION_NAME = "MyConnection"
 ROLE = "SALES_RAVEN_RO_RL"
 WAREHOUSE = "SNOWADHOC"
-GVP = "Mark Fleming"
-GVP_EMAIL = "mark.fleming@snowflake.com"
+# Scope is the THEATER. GVP names are not stable: in 2026-09 AMSExpansion's GVP
+# became the placeholder "(TBH)  AMSExpansion GVP" and every 'Mark Fleming'
+# filter silently returned zero rows. Only MaxIQ (USER_NAME) is keyed on a
+# person, so GVP is resolved at runtime from the account table in main().
+THEATER = "AMSExpansion"
+GVP = ""   # set by resolve_gvp(); used ONLY for the MaxIQ USER_NAME lookup
 
 # PEAK-native detail table. This is what MaxIQ reports against, and the only
 # source that reproduces its published figures exactly:
@@ -227,7 +231,7 @@ def _peak_base(extra_cols="", fq_col="GO_LIVE_DATE_FQ_SK", fq_val=None):
             {extra_cols}
         FROM {PEAK} p
         LEFT JOIN rvp_names rn ON LOWER(p.RVP_EMAIL) = rn.rvp_email
-        WHERE p.GVP_EMAIL = '{GVP_EMAIL}'
+        WHERE p.THEATER = '{THEATER}'
           AND p.LEVEL_NUM = 1
           AND p.ESTIMATED_VALUE > 0
           AND p.{fq_col} = '{fq_val}'
@@ -301,7 +305,7 @@ def query_prior_actuals(conn):
         END                                  AS region,
         ROUND(SUM(USE_CASE_EACV), 0)         AS actual_acv
     FROM MDM.MDM_INTERFACES.DIM_USE_CASE
-    WHERE ACCOUNT_GVP = '{GVP}'
+    WHERE THEATER_NAME = '{THEATER}'
       AND IS_DEPLOYED = TRUE
       AND USE_CASE_EACV > 0
       AND STAGE_NUMBER >= 1
@@ -390,7 +394,7 @@ def query_yoy(conn):
     SELECT
         ROUND(SUM(USE_CASE_EACV), 0) AS yoy_acv
     FROM SALES.SE_REPORTING.DIM_USE_CASE_HISTORY_DS
-    WHERE ACCOUNT_GVP = '{GVP}'
+    WHERE THEATER_NAME = '{THEATER}'
       AND DS = '{yoy_date}'
       AND IS_DEPLOYED = FALSE
       AND IS_LOST     = FALSE
@@ -456,7 +460,7 @@ def query_wins(conn):
         COUNT(CASE WHEN STAGE_NUMBER IN (1,2,3) AND DECISION_DATE BETWEEN '{QS}' AND '{QE}'
                   THEN 1 END) AS pretw_q3_cnt
     FROM MDM.MDM_INTERFACES.DIM_USE_CASE
-    WHERE ACCOUNT_GVP = '{GVP}'
+    WHERE THEATER_NAME = '{THEATER}'
       AND IS_LOST = FALSE AND IS_DEPLOYED = FALSE
       AND USE_CASE_EACV > 0 AND STAGE_NUMBER BETWEEN 1 AND 6
     """
@@ -1101,7 +1105,7 @@ def generate_html(regions, targets, yoy_total, districts, wins_data,
 <body>
 
 <h1>{QLABEL} Forecast Analysis <span class="badge">AMSExpansion</span></h1>
-<p class="subtitle">As of {today_str} &mdash; {days_label} ({QS.strftime("%b %-d, %Y")} &ndash; {QE.strftime("%b %-d, %Y")}) &mdash; Mark Fleming GVP</p>
+<p class="subtitle">As of {today_str} &mdash; {days_label} ({QS.strftime("%b %-d, %Y")} &ndash; {QE.strftime("%b %-d, %Y")}) &mdash; {THEATER}{(" &mdash; " + GVP) if GVP else ""}</p>
 {"" if CALIBRATED else '''
 <div style="background:#fff3cd; border:2px solid #dc3545; border-radius:6px; padding:14px 18px; margin:12px 0;">
   <div style="color:#b3261e; font-weight:700; font-size:1.05em; margin-bottom:4px;">
@@ -1497,7 +1501,7 @@ def generate_html(regions, targets, yoy_total, districts, wins_data,
       <td style="padding:12px 14px;text-align:right;color:#c0a0f0;">{fmt_m(total_target)}</td>
       <td style="padding:12px 14px;text-align:right;color:{agg_ml_col};">{fmt_pct(agg_m4['ml'], total_target)}</td>
       <td style="padding:12px 14px;text-align:right;color:#aaa;">{fmt_m(PRIOR_ACTUALS['TOTAL'])}</td>
-      <td style="padding:12px 14px;text-align:center;color:#aaa;">Mark Fleming</td>
+      <td style="padding:12px 14px;text-align:center;color:#aaa;">{GVP or THEATER}</td>
     </tr>
   </tbody>
 </table>
@@ -1602,7 +1606,7 @@ def generate_html(regions, targets, yoy_total, districts, wins_data,
   </div>
 </div>
 
-<p style="font-size:0.72em;color:#aaa;margin-top:16px;text-align:center;">Generated {today_str} &bull; Sources: MDM.MDM_INTERFACES.DIM_USE_CASE &bull; SALES.SE_REPORTING.DIM_USE_CASE_HISTORY_DS &bull; SALES.REPORTING.PEAK_USE_CASE_TARGETS &bull; SALES.REPORTING.CORE_PRODUCT_CATEGORY_CONSUMPTION &bull; AMSExpansion / Mark Fleming GVP</p>
+<p style="font-size:0.72em;color:#aaa;margin-top:16px;text-align:center;">Generated {today_str} &bull; Sources: MDM.MDM_INTERFACES.DIM_USE_CASE &bull; SALES.SE_REPORTING.DIM_USE_CASE_HISTORY_DS &bull; SALES.REPORTING.PEAK_USE_CASE_TARGETS &bull; SALES.REPORTING.CORE_PRODUCT_CATEGORY_CONSUMPTION &bull; {THEATER}</p>
 
 </body>
 </html>""")
@@ -1685,9 +1689,34 @@ def apply_calibration(conn):
     return True
 
 
+def resolve_gvp(conn):
+    """
+    Current GVP name for THEATER, from the account table. Only the MaxIQ tie-out
+    (PEAK_FORECAST_CALLS_PIPELINE_TARGETS.USER_NAME) is keyed on a person, so this
+    is looked up per run: the next GVP rename or backfill heals itself. An empty
+    result makes the MaxIQ tie-out return nothing rather than guessing a name.
+    """
+    cur = conn.cursor()
+    try:
+        row = cur.execute(f"""
+            SELECT GVP FROM SALES.RAVEN.D_SALESFORCE_ACCOUNT_CUSTOMERS
+            WHERE GEO = '{THEATER}' AND GVP IS NOT NULL
+            GROUP BY GVP ORDER BY COUNT(*) DESC LIMIT 1
+        """).fetchone()
+        return row[0] if row else ""
+    finally:
+        cur.close()
+
+
 def main():
     print(f"Connecting to Snowflake ({CONNECTION_NAME}) …")
     conn = get_conn()
+
+    global GVP
+    GVP = resolve_gvp(conn)
+    print(f"Scope: theater {THEATER} — current GVP resolved as {GVP!r}")
+    if not GVP:
+        print("  ! No GVP resolved for this theater — MaxIQ tie-out will be empty")
 
     print("Recalibrating rates at current horizon …")
     global CALIBRATED

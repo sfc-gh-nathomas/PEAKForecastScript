@@ -8,7 +8,7 @@ Main file: `peak_app_sis.py` (local variant: `peak_app.py`)
   Generates the HTML forecast from live Snowflake data.
   `python3 peak_report.py` (current quarter) | `q3` | `q4` (out-quarter view).
   Uses role `SALES_RAVEN_RO_RL`, warehouse `SNOWADHOC`, connection `MyConnection`,
-  GVP "Mark Fleming".
+  scoped on THEATER "AMSExpansion" (see "Scope is THEATER, never a GVP name").
   NOTE: as of 2026-09-10 this replaced an older, larger 193KB
   "PEAK Qualify & Commit Report Generator". That version is recoverable at
   commit `99731ef` if anything is missing from the rewrite.
@@ -19,6 +19,46 @@ Main file: `peak_app_sis.py` (local variant: `peak_app.py`)
 - `peak_nw_sw_forecast.py` — NW/SW region forecast.
 - `peak_script_standalone.py`, `deploy.py` — standalone script variant and deploy.
 - `archive/` — superseded `peak_report.py.bak-mdm`, `.bak-prequarter`, `.bak-stage0`.
+
+## Scope is THEATER, never a GVP name (refactored 2026-09-27)
+WHY: between 2026-09-15 and 2026-09-27 AMSExpansion's GVP was renamed from
+"Mark Fleming" to the placeholder `(TBH)  AMSExpansion GVP` — note the DOUBLE
+SPACE — and MDM `ACCOUNT_GVP` went NULL for every AMSExpansion row. Every
+`GVP = 'Mark Fleming'` filter silently returned zero rows and the app broke.
+USMajors had the same latent break (Jonathan Beaulier -> Josh Sullivan).
+
+RULE: scope every query on theater. Column per source:
+| Source | Theater column |
+|---|---|
+| `SALES.RAVEN.D_SALESFORCE_ACCOUNT_CUSTOMERS` (`_gvp_filter`) | `GEO` |
+| `DIM_USE_CASE_MDM_CACHE`, `DIM_USE_CASE_HISTORY_DS_VW`, `SE_REPORTING.DIM_USE_CASE_HISTORY_DS`, `MDM...DIM_USE_CASE(_DAILY)` | `THEATER_NAME` |
+| `SALES.REPORTING.PEAK_USE_CASE_FORECAST` | `THEATER` |
+| `SALES_PROGRAMS_BRONZE_INGEST` | `GEO_NAME` |
+| `GVP_TARGET_CACHE` | `THEATER` (use `MAX()` — a theater can have 2 owner rows across a GVP change) |
+| `VELOCITY_CACHE`, `PIPELINE_MOVEMENTS_CACHE` | `THEATER_NAME` (added 2026-09-27) |
+
+Only TWO sources have no theater column and are keyed on a person: MaxIQ
+`PEAK_FORECAST_CALLS_PIPELINE_TARGETS.USER_NAME` and
+`BOB_SNOWFLAKE_INTELLIGENCE_USAGE_STREAMLIT_AGG.GVP`. For those the GVP name is
+RESOLVED AT RUNTIME from the account table by GEO (`_resolve_gvp()` in the app,
+`resolve_gvp()` in peak_report.py). Never hard-code the placeholder — it will
+change again when the seat is filled, and runtime resolution heals that.
+
+VERIFIED SAFE FOR HISTORY: in both history tables, `THEATER_NAME='AMSExpansion'`
+contains every former `ACCOUNT_GVP='Mark Fleming'` row with ZERO exceptions in
+every snapshot sampled 2025-02 -> 2026-09 (plus ~29 NULL-GVP rows the old
+`_gvp_filter` was already meant to include). Calibration populations unchanged:
+post-refactor Q3 run calibrated @ day 58 and the MaxIQ target tied exactly.
+
+Cache builders changed to group on THEATER_NAME, keeping ACCOUNT_GVP as MAX():
+- `velocity_cache_refresh.sql` (manual). Backup: `VELOCITY_CACHE_BAK_20260927`.
+- `SNOWPUBLIC.STREAMLIT.REFRESH_PIPELINE_MOVEMENTS_CACHE()` — SHARED, owned by
+  `SALES_ENGINEER`, called daily 6am ET by task `REFRESH_PEAK_PIPELINE_CACHE`.
+  Altered with the user's approval. Only consumers are this app, by column name.
+
+NOT YET REFACTORED (still hard-code Mark Fleming, so still broken):
+`peak_districts.py`, `peak_nw_sw_forecast.py`, `peak_script_standalone.py`,
+`peak_app.py`. Apply the same table above.
 
 ## Calibration rule — do not share rates across horizons
 An in-quarter report and an out-quarter report MUST NOT share conversion rates.
@@ -65,6 +105,30 @@ or `CC_USAGE_CACHE`, re-run `GRANT SELECT` to `SALES_STREAMLIT_RL`.
 `velocity_cache_refresh.sql` in this folder. It is NOT wired into the hourly
 SYSTEM refresh that keeps the other caches current.
 
+REFRESHED 2026-09-23 (was 47 days stale, last built 2026-08-07). Because the
+script is `CREATE OR REPLACE TABLE`, all grants were dropped and had to be
+re-issued — `SELECT` to `SALES_STREAMLIT_RL`, `NORMALYZEROLE`, and `PUBLIC`.
+ALWAYS re-grant after running it or the app loses access to the table.
+
+Refresh moved the numbers materially, which is the cost of the frozen windows
+below. Mark Fleming, before -> after:
+- `stage_transition`: AVG_TW 82.69 -> 81.71, TW_TO_IMP 51.20 -> 46.99,
+  IMP_TO_DEPLOYED 87.56 -> 89.11
+- `deployment` current: V7 $9.72M -> $8.85M, V14 $21.80M -> $30.18M (+38%),
+  V30 $44.42M -> $61.50M (+38%)
+
+That shifts `CONFIG["risk_thresholds"]` via `update_risk_thresholds_from_velocity()`,
+since they are sums of the rounded averages: stage_123 222 -> 218, stage_4
+139 -> 136, stage_5 88 -> 89. Use-case risk classifications move with them, so
+expect the risk counts on the dashboard to change after any velocity refresh.
+
+Row count went 35 -> 34. The dropped row is in some GVP other than Mark Fleming,
+who still has the full 4 deployment periods + 1 stage_transition. It could not be
+identified precisely: `CREATE OR REPLACE` makes the prior version unreachable via
+Time Travel ("Time travel data is not available"). If you need a before/after
+diff on a future refresh, snapshot the table to a scratch copy FIRST.
+`hist_q1` is absent for every GVP, which predates this refresh.
+
 Verified 2026-09-10 via `SNOWPUBLIC.INFORMATION_SCHEMA.TABLES`:
 - `VELOCITY_CACHE` last altered 2026-08-07 — 34 days stale, 35 rows
 - `CC_USAGE_CACHE` last altered 2026-07-26 — 46 days stale, also NOT refreshing
@@ -109,16 +173,20 @@ displayed rows did not belong.
 Cross-check after ANY change to these filters — it ties exactly:
 ```sql
 SELECT SUM(FORECAST_AMOUNT) FROM SALES.REPORTING.PEAK_FORECAST_CALLS_PIPELINE_TARGETS
-WHERE USER_NAME='Mark Fleming' AND FUNCTION='GVP' AND TYPE='Use Case Wins'
+WHERE USER_NAME='(TBH)  AMSExpansion GVP' AND FUNCTION='GVP' AND TYPE='Use Case Wins'
   AND FORECAST_TYPE='Open' AND FISCAL_QUARTER='2027-Q3' AND LATEST_DATE=TRUE;
--- 196,724,457.41 == patched q_wins_open_pipeline for FY27-Q3
+-- USER_NAME is whatever _resolve_gvp() returns TODAY — do not copy a literal.
+-- 2026-09-17: 196,724,457.41 == app, exact (then keyed 'Mark Fleming').
+-- 2026-09-27: MaxIQ 163,442,237.65 vs app 165,342,237.65. The $1.9M gap is
+--   exactly 18 AMSExpansion use cases (mostly created 2026-09-26/27) that are
+--   in MDM but not yet in PEAK_USE_CASE_FORECAST — source lag, not scoping.
+--   Re-check after the PEAK source refreshes; it should close.
 ```
 Stage 0 ("Not In Pursuit") is worth $9.89M here — including it is what breaks
 the tie to MaxIQ.
 
-STILL OPEN: `q_wins_risk_analysis()` has no quarter filter at all and uses raw
-`ACCOUNT_GVP = '{gvp}'` instead of `_gvp_filter()`, so it misses accounts with
-NULL `ACCOUNT_GVP`. Not yet fixed.
+STILL OPEN: `q_wins_risk_analysis()` has no quarter filter at all. (Its old
+raw `ACCOUNT_GVP` filter is now `THEATER_NAME`, which fixes the NULL-GVP miss.)
 
 ## CoCo Adoption on the Go-Lives tab (replaced Cortex Code CLI Usage)
 The old "Cortex Code CLI Usage (Last 90 Days)" table was removed 2026-09-17. It

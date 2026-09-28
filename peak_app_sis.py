@@ -87,7 +87,11 @@ def run_query(sql, _retries=2, _delay=3):
 
 CONFIG = {
     "warehouse": "SNOWADHOC",
-    "gvp_name": "Mark Fleming",
+    # Scope is the THEATER. gvp_name / gvp_email are RESOLVED at load time by
+    # _resolve_gvp() — never hard-code a person here (see _resolve_gvp docstring).
+    "theater": "AMSExpansion",
+    "gvp_name": "",
+    "gvp_email": "",
     "gvp_function": "GVP",
     "play_threshold": 500000,
     "top_n": 5,
@@ -114,20 +118,44 @@ RISK_CATEGORIES = [
     "Access to the Customer", "Performance", "Consumption",
 ]
 
-# GVP to theater name mapping
-GVP_THEATER_MAP = {
-    "Mark Fleming": "AMSExpansion",
-    "Jennifer Chronis": "USPubSec",
-    "Jonathan Beaulier": "USMajors",
-    "Keegan Riley": "AMSAcquisition",
-    "Jon Robertson": "APJ",
-    "Dayne Turbitt": "EMEA",
-}
+# Theaters are the stable scope. GVP names are NOT: on 2026-09 AMSExpansion's GVP
+# became the placeholder "(TBH)  AMSExpansion GVP" (double space) and USMajors
+# moved from Jonathan Beaulier to Josh Sullivan, silently zeroing every
+# GVP-name filter. Scope on theater and resolve the person at runtime.
+THEATER_OPTIONS = [
+    "AMSExpansion", "AMSAcquisition", "APJ", "EMEA", "USMajors", "USPubSec",
+]
 
 
 def _theater():
-    """Return the theater name for the current GVP."""
-    return GVP_THEATER_MAP.get(CONFIG["gvp_name"], CONFIG["gvp_name"])
+    """Return the current theater scope."""
+    return CONFIG["theater"]
+
+
+def _resolve_gvp(theater):
+    """
+    Resolve the CURRENT GVP name and email for a theater from the account table.
+
+    Needed only for the sources that have no theater column and key on the
+    person: MaxIQ PEAK_FORECAST_CALLS_PIPELINE_TARGETS.USER_NAME and
+    BOB_SNOWFLAKE_INTELLIGENCE_USAGE_STREAMLIT_AGG.GVP. Every other query scopes on
+    theater directly. Because this is looked up per load, the next rename or
+    backfill of a GVP heals itself with no code change.
+    """
+    try:
+        rows = run_query(f"""
+            SELECT GVP, GVP_EMAIL, COUNT(*) AS N
+            FROM SALES.RAVEN.D_SALESFORCE_ACCOUNT_CUSTOMERS
+            WHERE GEO = '{theater}' AND GVP IS NOT NULL
+            GROUP BY GVP, GVP_EMAIL
+            ORDER BY N DESC
+            LIMIT 1
+        """)
+        if rows:
+            return safe_str(rows[0].get("GVP", "")), safe_str(rows[0].get("GVP_EMAIL", ""))
+    except Exception:
+        pass
+    return "", ""
 
 
 def _quarter_label(qs):
@@ -360,17 +388,20 @@ def update_risk_thresholds_from_velocity(velocity):
 
 def _gvp_filter(alias=None):
     """
-    Returns a SQL filter that captures ALL accounts for the configured GVP,
-    including those with NULL ACCOUNT_GVP in MDM cache. Uses raven account
-    table (GVP org mapping — not transactional) as the source of truth.
+    Account-scope filter for the current THEATER (name kept for its ~45 callers).
+
+    Uses the raven account table's GEO, not a GVP name: GVP names get renamed
+    (AMSExpansion became "(TBH)  AMSExpansion GVP" in 2026-09, which matched zero
+    rows against the old 'Mark Fleming' literal). GEO covers the identical account
+    set and still captures accounts whose MDM ACCOUNT_GVP is NULL.
     """
-    gvp = CONFIG["gvp_name"]
+    theater = CONFIG["theater"]
     col = f"{alias}.ACCOUNT_ID" if alias else "ACCOUNT_ID"
     return (
         f"{col} IN ("
         f"SELECT SALESFORCE_ACCOUNT_ID "
         f"FROM SALES.RAVEN.D_SALESFORCE_ACCOUNT_CUSTOMERS "
-        f"WHERE GVP = '{gvp}')"
+        f"WHERE GEO = '{theater}')"
     )
 
 def q_fiscal_calendar(selected_quarter):
@@ -459,11 +490,14 @@ def q_regional_targets():
     fq_key = CONFIG["fiscal_quarter_key"]
     gvp = CONFIG["gvp_name"]
     rows = run_query(f"""
-        SELECT TARGET_TYPE, TARGET_VALUE
+        -- Scoped on THEATER, not OWNER_NAME: a theater can carry two owner rows
+        -- across a GVP change (USMajors has Beaulier + Sullivan), so MAX collapses them.
+        SELECT TARGET_TYPE, MAX(TARGET_VALUE) AS TARGET_VALUE
         FROM SNOWPUBLIC.STREAMLIT.GVP_TARGET_CACHE
-        WHERE OWNER_NAME = '{gvp}'
+        WHERE THEATER = '{_theater()}'
           AND TARGET_LEVEL = 'GVP'
           AND FISCAL_QUARTER = '{fq_key}'
+        GROUP BY TARGET_TYPE
     """)
     return {r["TARGET_TYPE"]: safe_float(r["TARGET_VALUE"]) for r in rows}
 
@@ -619,8 +653,8 @@ def q_wins_forecast_calls():
         return (cur - prv) if (cur is not None and prv is not None) else None
     # Fetch wins target from GVP target cache
     target_rows = run_query(f"""
-        SELECT TARGET_VALUE FROM SNOWPUBLIC.STREAMLIT.GVP_TARGET_CACHE
-        WHERE OWNER_NAME = '{gvp}' AND TARGET_LEVEL = 'GVP'
+        SELECT MAX(TARGET_VALUE) AS TARGET_VALUE FROM SNOWPUBLIC.STREAMLIT.GVP_TARGET_CACHE
+        WHERE THEATER = '{_theater()}' AND TARGET_LEVEL = 'GVP'
           AND FISCAL_QUARTER = '{fq_key}' AND TARGET_TYPE = 'Use Case Won'
     """)
     wins_target = safe_float(target_rows[0]["TARGET_VALUE"]) if target_rows else 0
@@ -698,7 +732,7 @@ def q_wins_risk_analysis():
         SELECT USE_CASE_EACV, ACCOUNT_NAME, USE_CASE_NAME, USE_CASE_RISK,
                RISK_DESCRIPTION, SPECIALIST_COMMENTS, STAGE_NUMBER, USE_CASE_STAGE
         FROM SNOWPUBLIC.STREAMLIT.DIM_USE_CASE_MDM_CACHE
-        WHERE ACCOUNT_GVP = '{gvp}'
+        WHERE THEATER_NAME = '{_theater()}'
           AND USE_CASE_EACV > 0
           AND IS_WON = FALSE
           AND COALESCE(IS_LOST, FALSE) = FALSE
@@ -883,7 +917,7 @@ def q_deployment_velocity():
     rows = run_query(f"""
         SELECT PERIOD, V7, V14, V30
         FROM SNOWPUBLIC.STREAMLIT.VELOCITY_CACHE
-        WHERE ACCOUNT_GVP = '{gvp}' AND METRIC_TYPE = 'deployment'
+        WHERE THEATER_NAME = '{_theater()}' AND METRIC_TYPE = 'deployment'
         ORDER BY PERIOD
     """)
     current = {"v7": 0, "v14": 0, "v30": 0}
@@ -1120,7 +1154,7 @@ def q_bronze_tb_total():
     rows = run_query(f"""
         SELECT SUM(TB_INGESTED) as BRONZE_TB
         FROM SALES.REPORTING.SALES_PROGRAMS_BRONZE_INGEST
-        WHERE GVP = '{CONFIG["gvp_name"]}'
+        WHERE GEO_NAME = '{_theater()}'
           AND IS_BRONZE = TRUE
           AND MONTH BETWEEN '{CONFIG["quarter_start"]}' AND '{CONFIG["quarter_end"]}'
     """)
@@ -1597,7 +1631,7 @@ def q_bronze_tb_by_account():
         SELECT SALESFORCE_ACCOUNT_ID as ACCOUNT_ID, SALESFORCE_ACCOUNT_NAME as ACCOUNT_NAME,
                ROUND(SUM(TB_INGESTED), 1) as TB_INGESTED
         FROM SALES.REPORTING.SALES_PROGRAMS_BRONZE_INGEST
-        WHERE GVP = '{CONFIG["gvp_name"]}'
+        WHERE GEO_NAME = '{_theater()}'
         GROUP BY SALESFORCE_ACCOUNT_ID, SALESFORCE_ACCOUNT_NAME
     """)
     return {r["ACCOUNT_ID"]: r for r in rows}
@@ -1776,7 +1810,7 @@ def q_pipeline_movements():
     rows = run_query(f"""
         SELECT METRIC, CNT, ACV
         FROM SNOWPUBLIC.STREAMLIT.PIPELINE_MOVEMENTS_CACHE
-        WHERE ACCOUNT_GVP = '{gvp}'
+        WHERE THEATER_NAME = '{_theater()}'
     """)
     result = {}
     for r in rows:
@@ -1799,7 +1833,7 @@ def q_use_case_velocity():
     rows = run_query(f"""
         SELECT AVG_TW, AVG_TW_TO_IMP, AVG_IMP_TO_DEPLOYED
         FROM SNOWPUBLIC.STREAMLIT.VELOCITY_CACHE
-        WHERE ACCOUNT_GVP = '{gvp}' AND METRIC_TYPE = 'stage_transition'
+        WHERE THEATER_NAME = '{_theater()}' AND METRIC_TYPE = 'stage_transition'
     """)
     r = rows[0] if rows else {}
     return {
@@ -3610,11 +3644,6 @@ STREAMLIT_CSS = """
 # STREAMLIT APP CONSTANTS
 # =============================================================================
 
-GVP_OPTIONS = [
-    "Dayne Turbitt", "Jennifer Chronis", "Jon Robertson",
-    "Jonathan Beaulier", "Keegan Riley", "Mark Fleming",
-]
-
 PLAY_OPTIONS = {
     "Bronze (Make Your Data AI Ready)": "bronze",
     "Snowflake Intelligence (AI: Snowflake Intelligence & Agents)": "si",
@@ -3626,8 +3655,10 @@ PLAY_OPTIONS = {
 # DATA LOADING (parallel with ThreadPoolExecutor)
 # =============================================================================
 
-def _run_all_queries(gvp_name, selected_quarter):
-    CONFIG["gvp_name"] = gvp_name
+def _run_all_queries(theater, selected_quarter):
+    CONFIG["theater"] = theater
+    # Resolve the current GVP for the few person-keyed sources (MaxIQ, SI agg).
+    CONFIG["gvp_name"], CONFIG["gvp_email"] = _resolve_gvp(theater)
     CONFIG["is_current_quarter"] = selected_quarter["is_current"]
     # For current quarter, use CURRENT_DATE(); for past, use quarter end; for future, use quarter start
     if selected_quarter["is_current"]:
@@ -3877,7 +3908,9 @@ def _run_all_queries(gvp_name, selected_quarter):
         "wins_risk_analysis": wins_risk_analysis,
         "wins_forecast_analysis": wins_forecast_analysis,
         "_config": {
+            "theater": CONFIG.get("theater"),
             "gvp_name": CONFIG.get("gvp_name"),
+            "gvp_email": CONFIG.get("gvp_email"),
             "quarter_start": CONFIG.get("quarter_start"),
             "quarter_end": CONFIG.get("quarter_end"),
             "fiscal_year": CONFIG.get("fiscal_year"),
@@ -3895,14 +3928,14 @@ def _run_all_queries(gvp_name, selected_quarter):
     }
 
 
-def load_all_data(gvp_name, selected_quarter):
-    cache_key = f"peak_data_{gvp_name}_{selected_quarter['label']}"
+def load_all_data(theater, selected_quarter):
+    cache_key = f"peak_data_{theater}_{selected_quarter['label']}"
     cached = st.session_state.get(cache_key)
     if cached is not None:
         loaded_at = cached.get("_loaded_at")
         if loaded_at and (datetime.now() - loaded_at).total_seconds() < 600:
             return cached
-    data = _run_all_queries(gvp_name, selected_quarter)
+    data = _run_all_queries(theater, selected_quarter)
     st.session_state[cache_key] = data
     return data
 
@@ -5050,10 +5083,10 @@ def main():
     with st.sidebar:
         st.title("PEAK QC Report")
         st.markdown("---")
-        selected_gvp = st.selectbox(
-            "GVP", options=GVP_OPTIONS,
-            index=GVP_OPTIONS.index("Mark Fleming"),
-            help="Select GVP to view. Changing GVP reloads all data.",
+        selected_theater = st.selectbox(
+            "Theater", options=THEATER_OPTIONS,
+            index=THEATER_OPTIONS.index("AMSExpansion"),
+            help="Select theater to view. Changing theater reloads all data.",
         )
         all_quarters = compute_fiscal_quarters()
         quarter_labels = [q["label"] for q in all_quarters]
@@ -5065,7 +5098,7 @@ def main():
         )
         selected_quarter = all_quarters[quarter_labels.index(selected_quarter_label)]
         st.markdown("---")
-        cache_key = f"peak_data_{selected_gvp}_{selected_quarter_label}"
+        cache_key = f"peak_data_{selected_theater}_{selected_quarter_label}"
         cached = st.session_state.get(cache_key)
         if cached and cached.get("_loaded_at"):
             last_refresh = cached["_loaded_at"].strftime('%H:%M:%S')
@@ -5078,7 +5111,7 @@ def main():
                     del st.session_state[key]
             st.rerun()
 
-    data = load_all_data(selected_gvp, selected_quarter)
+    data = load_all_data(selected_theater, selected_quarter)
     for k, v in data["_config"].items():
         if v is not None:
             CONFIG[k] = v
@@ -5089,7 +5122,9 @@ def main():
     qend = safe_str(fiscal["FQ_END"])
     days_remaining = safe_int(fiscal["DAYS_REMAINING"])
 
-    st.markdown(f"## PEAK Forecasting — {selected_gvp}")
+    _gvp_disp = CONFIG.get("gvp_name") or "GVP unassigned"
+    st.markdown(f"## PEAK Forecasting — {selected_theater}")
+    st.caption(f"GVP: {_gvp_disp}")
     if not selected_quarter["is_current"]:
         st.info(f"Viewing **{selected_quarter_label}** (historical). Cache-based metrics (velocity, pipeline movements, Cortex Code usage) are only available for the current quarter.")
     if date.fromisoformat(qend) < date.today():

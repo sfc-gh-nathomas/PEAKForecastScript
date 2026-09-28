@@ -20,7 +20,10 @@ import snowflake.connector
 CONNECTION_NAME = "MyConnection"
 ROLE = "SALES_RAVEN_RO_RL"
 WAREHOUSE = "SNOWADHOC"
-GVP = "Mark Fleming"
+# Theater, not GVP: GVP names get renamed (AMSExpansion -> "(TBH)  AMSExpansion
+# GVP" in 2026-09). THEATER_NAME is a verified superset of the old GVP scope in
+# every snapshot back to 2025-02, so calibration history is unchanged.
+THEATER = "AMSExpansion"
 
 SNAP = "SALES.SE_REPORTING.DIM_USE_CASE_HISTORY_DS"
 FINAL = "SNOWPUBLIC.STREAMLIT.DIM_USE_CASE_MDM_CACHE"
@@ -86,7 +89,7 @@ def calibrate_quarter(conn, label, qs, qe, day_offset):
         FROM {SNAP} h
         CROSS JOIN snap s
         WHERE h.DS = s.d
-          AND h.ACCOUNT_GVP = '{GVP}'
+          AND h.THEATER_NAME = '{THEATER}'
           AND h.USE_CASE_EACV > 0
           AND h.IS_DEPLOYED = FALSE
           AND COALESCE(h.IS_LOST, FALSE) = FALSE
@@ -97,7 +100,7 @@ def calibrate_quarter(conn, label, qs, qe, day_offset):
     final AS (
         SELECT u.USE_CASE_ID
         FROM {FINAL} u
-        WHERE u.ACCOUNT_GVP = '{GVP}'
+        WHERE u.THEATER_NAME = '{THEATER}'
           AND u.USE_CASE_EACV > 0
           AND u.IS_DEPLOYED = TRUE
           AND u.GO_LIVE_DATE BETWEEN '{qs}' AND '{qe}'
@@ -129,7 +132,7 @@ def calibrate_quarter(conn, label, qs, qe, day_offset):
         SELECT DISTINCT h.USE_CASE_ID
         FROM {SNAP} h CROSS JOIN snap s
         WHERE h.DS = s.d
-          AND h.ACCOUNT_GVP = '{GVP}'
+          AND h.THEATER_NAME = '{THEATER}'
           AND h.USE_CASE_EACV > 0
           AND COALESCE(h.IS_LOST, FALSE) = FALSE
           AND h.GO_LIVE_DATE BETWEEN '{qs}' AND '{qe}'
@@ -141,7 +144,7 @@ def calibrate_quarter(conn, label, qs, qe, day_offset):
                   THEN u.USE_CASE_EACV ELSE 0 END), 0) AS not_in_pipeline
     FROM {FINAL} u
     LEFT JOIN known k ON u.USE_CASE_ID = k.USE_CASE_ID
-    WHERE u.ACCOUNT_GVP = '{GVP}'
+    WHERE u.THEATER_NAME = '{THEATER}'
       AND u.USE_CASE_EACV > 0
       AND u.IS_DEPLOYED = TRUE
       AND u.GO_LIVE_DATE BETWEEN '{qs}' AND '{qe}'
@@ -269,7 +272,7 @@ def pacing_quarter(conn, label, qs, qe, day_offset):
                   THEN u.USE_CASE_EACV ELSE 0 END), 0) AS by_day,
         ROUND(SUM(u.USE_CASE_EACV), 0) AS final_deployed
     FROM {FINAL} u
-    WHERE u.ACCOUNT_GVP = '{GVP}'
+    WHERE u.THEATER_NAME = '{THEATER}'
       AND u.USE_CASE_EACV > 0
       AND u.IS_DEPLOYED = TRUE
       AND u.GO_LIVE_DATE BETWEEN '{qs}' AND '{qe}'
